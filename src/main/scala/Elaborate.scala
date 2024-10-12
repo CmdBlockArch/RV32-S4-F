@@ -1,3 +1,5 @@
+import perip.SimMemRead
+
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
     // make yosys happy
@@ -6,5 +8,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new core.Core(), args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new SimMemRead(), args, firtoolOptions)
 }
