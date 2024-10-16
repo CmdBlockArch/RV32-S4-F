@@ -1,4 +1,4 @@
-import perip.SimMemRead
+import core.misc.MemReadArb
 
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
@@ -8,5 +8,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new SimMemRead(), args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new MemReadArb(3), args, firtoolOptions)
 }
