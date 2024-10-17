@@ -16,6 +16,13 @@ class MemReadIO extends Bundle {
   val last = Input(Bool())
 }
 
+class ReqBundle extends Bundle {
+  val addr = Output(UInt(32.W))
+  val size = Output(UInt(2.W))
+  val burst = Output(UInt(2.W))
+  val len = Output(UInt(8.W))
+}
+
 class MemReadArb(nrMaster: Int) extends Module {
   val master = IO(Vec(nrMaster, Flipped(new MemReadIO)))
   val slave = IO(new AxiReadIO)
@@ -34,12 +41,7 @@ class MemReadArb(nrMaster: Int) extends Module {
   // 向slave发送请求
   val curReqValid = RegInit(false.B) // 当前请求是否有效
   val curReqId = Reg(UInt(4.W)) // 当前请求的id
-  val curReq = Reg(new Bundle { // 请求信息
-    val addr = Output(UInt(32.W))
-    val size = Output(UInt(2.W))
-    val burst = Output(UInt(2.W))
-    val len = Output(UInt(8.W))
-  })
+  val curReq = Reg(new ReqBundle) // 请求信息
   slave.arvalid := curReqValid
   slave.arid    := curReqId
   slave.araddr  := curReq.addr
