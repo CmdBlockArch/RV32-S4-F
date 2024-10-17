@@ -1,7 +1,6 @@
 package core.misc
 
 import chisel3._
-import chisel3.util._
 import perip.AxiWriteIO
 
 class MemWriteIO extends Bundle {
@@ -33,14 +32,12 @@ class MemWriteArb(nrMaster: Int) extends Module {
 
   val running = RegInit(false.B) // 是否正在进行请求
   val curId = Reg(UInt(4.W)) // 当前请求id
-  val cur = Reg(new ReqBundle) // 当前请求信息
   val awvalid = RegInit(false.B) // 向slave转发请求的awvalid
   val curMaster = master(curId)
   when (!running && doReq) { // 可以接受请求
     running := true.B
     awvalid := true.B
     curId := doReqId
-    cur := curMaster
   }
 
   // 向slave转发请求
@@ -48,11 +45,11 @@ class MemWriteArb(nrMaster: Int) extends Module {
   when (slave.awready && slave.awvalid) {
     awvalid := false.B
   }
-  slave.awaddr := cur.addr
+  slave.awaddr := curMaster.addr
   slave.awid := curId
-  slave.awlen := cur.len
-  slave.awsize := cur.size
-  slave.awburst := cur.burst
+  slave.awlen := curMaster.len
+  slave.awsize := curMaster.size
+  slave.awburst := curMaster.burst
 
   // 始终准备好接收b通道返回
   slave.bready := true.B

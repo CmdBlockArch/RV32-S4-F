@@ -39,26 +39,25 @@ class MemReadArb(nrMaster: Int) extends Module {
   doReqId := (0 until nrMaster).foldLeft(0.U)((res, i) => Mux(pending(i), i.U, res))
 
   // 向slave发送请求
-  val curReqValid = RegInit(false.B) // 当前请求是否有效
-  val curReqId = Reg(UInt(4.W)) // 当前请求的id
-  val curReq = Reg(new ReqBundle) // 请求信息
-  slave.arvalid := curReqValid
-  slave.arid    := curReqId
-  slave.araddr  := curReq.addr
-  slave.arsize  := curReq.size
-  slave.arburst := curReq.burst
-  slave.arlen   := curReq.len
+  val curValid = RegInit(false.B) // 当前请求是否有效
+  val curId = Reg(UInt(4.W)) // 当前请求的id
+  val curMaster = master(curId)
+  slave.arvalid := curValid
+  slave.arid    := curId
+  slave.araddr  := curMaster.addr
+  slave.arsize  := curMaster.size
+  slave.arburst := curMaster.burst
+  slave.arlen   := curMaster.len
   // 有待发送的请求，且可以发送
-  when (doReq && (!curReqValid || slave.arready)) {
+  when (doReq && (!curValid || slave.arready)) {
     // 发送请求
-    curReqValid := true.B
-    curReqId := doReqId
-    curReq := master(doReqId)
+    curValid := true.B
+    curId := doReqId
     // 将请求标记为正在进行
     running(doReqId) := true.B
-  } .elsewhen (curReqValid && slave.arready) {
+  } .elsewhen (curValid && slave.arready) {
     // 当前请求被取走，且没有新的请求到来
-    curReqValid := false.B
+    curValid := false.B
   }
 
   // 将slave返回转发到各个master
