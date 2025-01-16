@@ -1,4 +1,6 @@
 import core.misc.{MemReadArb, MemWriteArb}
+import utils.SRam
+import core.fetch.Fetch
 
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
@@ -8,5 +10,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new MemReadArb(3), args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Fetch, args, firtoolOptions)
 }

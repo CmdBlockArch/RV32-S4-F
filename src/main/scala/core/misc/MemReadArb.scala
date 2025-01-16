@@ -16,13 +16,6 @@ class MemReadIO extends Bundle {
   val last = Input(Bool())
 }
 
-class ReqBundle extends Bundle {
-  val addr = Output(UInt(32.W))
-  val size = Output(UInt(2.W))
-  val burst = Output(UInt(2.W))
-  val len = Output(UInt(8.W))
-}
-
 class MemReadArb(nrMaster: Int) extends Module {
   val master = IO(Vec(nrMaster, Flipped(new MemReadIO)))
   val slave = IO(new AxiReadIO)

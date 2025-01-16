@@ -7,7 +7,7 @@ idea:
 
 verilog:
 	mkdir -p $(BUILD_DIR)
-	./mill $(PRJ).runMain Elaborate --target-dir $(BUILD_DIR)
+	./mill $(PRJ).runMain Elaborate --throw-on-first-error --target-dir $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)

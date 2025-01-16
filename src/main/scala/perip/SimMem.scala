@@ -101,11 +101,11 @@ class SimMemWrite extends Module {
     val awburst = Output(UInt(2.W))
   }
 
-  // cur：当前正在处理的读请求
+  // cur：当前正在处理的写请求
   val cur = Reg(new ReqBundle)
   val curValid = RegInit(false.B)
   val curResp = RegInit(false.B)
-  // 当前没有正在处理的读请求，或者当前请求已经处理完毕
+  // 当前没有正在处理的写请求，或者当前请求已经处理完毕
   // 则可以接收下一个请求
   io.awready := !curValid || (curResp && io.bready)
   // 接收地址后，传输完成前，可以接收数据
@@ -128,7 +128,7 @@ class SimMemWrite extends Module {
     override val functionName = "pmem_write"
     override val inputNames = Some(Seq("waddr", "wdata", "wmask"))
   }
-  // 生成下一次burst读取的地址
+  // 生成下一次burst写入的地址
   val addrNext = WireDefault(UInt(32.W), BurstAddrNext(cur.awaddr, cur.awlen, cur.awsize, cur.awburst))
   // 收到写入的数据
   when (io.wready && io.wvalid) {
