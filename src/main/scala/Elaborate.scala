@@ -1,3 +1,4 @@
+import core.decode.Decode
 import core.misc.{MemReadArb, MemWriteArb}
 import utils.SRam
 import core.fetch.Fetch
@@ -10,5 +11,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new Fetch, args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Decode, args, firtoolOptions)
 }

@@ -1,32 +1,30 @@
 package core.fetch
 
 import chisel3._
+import chisel3.util._
 import core.misc.MemReadIO
 
-class FetchOutIO extends Bundle {
-  val ready = Input(Bool())
-  val valid = Output(Bool())
+class FetchOut extends Bundle {
+  val pc = UInt(32.W)
+  val inst = UInt(32.W)
 
-  val pc = Output(UInt(32.W))
-  val inst = Output(UInt(32.W))
-
-  val trap = Output(Bool())
-  val cause = Output(UInt(4.W))
+  val trap = Bool()
+  val cause = UInt(4.W)
 }
 
 class Fetch extends Module {
   import core.fetch.InstCacheUtils._
 
-  val out = IO(new FetchOutIO)
+  val out = IO(Decoupled(new FetchOut))
   val memReadIO = IO(new MemReadIO)
   val io = IO(new Bundle {
     val flush = Input(Bool())
-    val fencei = Input(Bool())
+    val fenceI = Input(Bool())
     val dnpc = Input(UInt(32.W))
   })
 
   val iCache = Module(new InstCacheWay)
-  iCache.io.flush := io.fencei
+  iCache.io.flush := io.fenceI
 
   val pc = RegInit(0x80000000L.U(32.W))
   val valid = RegInit(false.B)
@@ -67,22 +65,22 @@ class Fetch extends Module {
   val hit = Wire(Bool())
   when (writeValid) { // write前递（优先级高于ICache）
     hit := true.B
-    out.inst := writeData(pcOffset)
-    out.trap := writeError || pcMisaligned
-    out.cause := writeError
+    out.bits.inst := writeData(pcOffset)
+    out.bits.trap := writeError || pcMisaligned
+    out.bits.cause := writeError
   } .elsewhen(cacheValid && cacheTag === pcTag) { // ICache命中
     hit := true.B
-    out.inst := cacheData(pcOffset)
-    out.trap := pcMisaligned
-    out.cause := 0.U
+    out.bits.inst := cacheData(pcOffset)
+    out.bits.trap := pcMisaligned
+    out.bits.cause := 0.U
   } .otherwise { // miss
     hit := false.B
-    out.inst := DontCare
-    out.trap := DontCare
-    out.cause := DontCare
+    out.bits.inst := DontCare
+    out.bits.trap := DontCare
+    out.bits.cause := DontCare
   }
   out.valid := valid && hit
-  out.pc := cachePc
+  out.bits.pc := cachePc
 
   // ---------- Write ----------
   val burstOffset = Reg(UInt((offsetW - 2).W))
