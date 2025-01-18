@@ -186,6 +186,19 @@ object InvInstField extends BoolDecodeField[InstPattern] {
   override def genTable(op: InstPattern): BitPat = n
 }
 
+object JmpField extends DecodeField[InstPattern, UInt] {
+  override def name = "jmp" // 跳转类型
+  override def chiselType = UInt(3.W)
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case JAL => BitPat("b001")
+      case JALR => BitPat("b010")
+      case BRANCH => BitPat("b100")
+      case _ => dc
+    }
+  }
+}
+
 object InstField {
   val fields = Seq(
     valASelField,
@@ -199,6 +212,7 @@ object InstField {
     RetField,
     fenceIField,
     fenceVMAField,
-    InvInstField
+    InvInstField,
+    JmpField,
   )
 }

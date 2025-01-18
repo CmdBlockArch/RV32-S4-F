@@ -33,6 +33,12 @@ class DecodeOut extends Bundle {
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   override def outCond = true.B
 
+  val io = IO(new Bundle {
+    val jmp = Output(Bool())
+    val dnpc = Output(UInt(32.W))
+  })
+
+  // 译码指令
   val func3 = cur.inst(14, 12)
   val funcs = cur.inst(30)
   val rs1 = cur.inst(19, 15)
@@ -82,4 +88,19 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst
   out.bits.cause := Mux(cur.trap, cur.cause, 2.U) // 2: illegal instruction
+
+  // 跳转
+  val jmpFlag = decodeRes(JmpField)
+  val jal = jmpFlag(0)
+  val jalr = jmpFlag(1)
+  val branch = jmpFlag(2)
+
+  val bru = Module(new BranchUnit)
+  bru.io.src1 := src1
+  bru.io.src2 := src2
+  bru.io.func := func3
+  val branchJmpEn = bru.io.jmp
+
+  io.jmp := valid && ((branch && branchJmpEn) || jal || jalr)
+  io.dnpc := Mux(jalr, src1, cur.pc) + Mux1H(jmpFlag, Seq(immJ, immI, immB))
 }
