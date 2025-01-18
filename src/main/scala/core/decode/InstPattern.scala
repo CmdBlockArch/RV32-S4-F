@@ -8,8 +8,10 @@ case class InstPattern(s: String) extends DecodePattern {
   override def bitPat = BitPat("b" + s)
 
   def inst = bitPat(31, 0)
+  def opcode = bitPat(6, 0)
   def func7 = bitPat(31, 25)
   def func5 = bitPat(31, 27)
+  def func3 = bitPat(14, 12)
 }
 
 object InstPattern {

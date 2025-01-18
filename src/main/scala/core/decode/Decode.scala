@@ -1,7 +1,6 @@
 package core.decode
 
 import chisel3._
-import chisel3.util._
 import utils.PiplineModule
 import core.fetch.FetchOut
 
@@ -11,6 +10,7 @@ class DecodeOut extends Bundle {
   val valC = Output(UInt(32.W))
 
   val func = Output(UInt(4.W))
+  val mul = Output(Bool())
   val rd = Output(UInt(5.W))
 
   val mem = Output(UInt(4.W))
