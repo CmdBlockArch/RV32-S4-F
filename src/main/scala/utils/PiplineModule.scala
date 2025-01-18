@@ -3,7 +3,8 @@ package utils
 import chisel3._
 import chisel3.util._
 
-abstract class PiplineModule[TI <: Data, TO <: Data](inType: TI, outType: TO) extends Module {
+abstract class PiplineModule[TI <: Data, TO <: Data]
+(val inType: TI, val outType: TO) extends Module {
   val in = IO(Flipped(Decoupled(inType)))
   val out = IO(Decoupled(outType))
   val flush = IO(Input(Bool()))
