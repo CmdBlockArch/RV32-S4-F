@@ -79,7 +79,7 @@ object FuncEnField extends BoolDecodeField[InstPattern] {
       }
       case ATOMIC => op.func5.rawString match {
         case "00010" => dc // lr
-        case _ => BitPat("b0011") // sc, amo
+        case _ => n // sc, amo
       }
       case _ => dc
     }
@@ -184,4 +184,21 @@ object InvInstField extends BoolDecodeField[InstPattern] {
   override def name = "invInst" // 是否为非法指令
   override def default = y
   override def genTable(op: InstPattern): BitPat = n
+}
+
+object InstField {
+  val fields = Seq(
+    valASelField,
+    ValBSelField,
+    ValCSelField,
+    FuncEnField,
+    MulField,
+    RdEnField,
+    MemField,
+    ZicsrEnField,
+    RetField,
+    fenceIField,
+    fenceVMAField,
+    InvInstField
+  )
 }

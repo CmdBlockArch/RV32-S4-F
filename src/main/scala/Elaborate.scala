@@ -2,6 +2,7 @@ import core.decode.Decode
 import core.misc.{MemReadArb, MemWriteArb}
 import utils.SRam
 import core.fetch.Fetch
+import core.decode.Decode
 
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
