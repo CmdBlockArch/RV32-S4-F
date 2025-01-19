@@ -86,6 +86,24 @@ object FuncEnField extends BoolDecodeField[InstPattern] {
   }
 }
 
+object SignEnField extends BoolDecodeField[InstPattern] {
+  override def name = "signEn" // 是否为有符号操作
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case CALRI => op.func3.rawString match {
+        case "101" => y // srai
+        case "001" => dc // slli, srli
+        case _ => n
+      }
+      case CALRR => op.func3.rawString match {
+        case "101" | "000" => y // sra, sub
+        case _ => dc
+      }
+      case _ => dc
+    }
+  }
+}
+
 object MulField extends BoolDecodeField[InstPattern] {
   override def name = "mul" // 是否为乘法操作
   override def genTable(op: InstPattern): BitPat = {
@@ -205,6 +223,7 @@ object InstField {
     ValBSelField,
     ValCSelField,
     FuncEnField,
+    SignEnField,
     MulField,
     RdEnField,
     MemField,

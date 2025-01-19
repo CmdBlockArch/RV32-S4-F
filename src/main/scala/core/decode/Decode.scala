@@ -31,8 +31,6 @@ class DecodeOut extends Bundle {
 }
 
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
-  override def outCond = true.B
-
   val io = IO(new Bundle {
     val jmp = Output(Bool())
     val dnpc = Output(UInt(32.W))
@@ -65,7 +63,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val table = decodeTable.table
   val decodeRes = decodeTable.decode(cur.inst)
   val invInst = decodeRes(InvInstField)
-  out.bits.func := Mux(decodeRes(FuncEnField), Cat(funcs, func3), 0.U(4.W))
+  out.bits.func := Mux(decodeRes(FuncEnField), Cat(funcs && decodeRes(SignEnField), func3), 0.U(4.W))
   out.bits.mul := decodeRes(MulField)
   out.bits.rd := Mux(decodeRes(RdEnField), rd, 0.U(5.W))
   out.bits.mem := decodeRes(MemField)
