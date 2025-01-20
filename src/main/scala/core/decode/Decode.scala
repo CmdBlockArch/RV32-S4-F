@@ -3,6 +3,7 @@ package core.decode
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode.DecodeTable
+import core.csr.CsrReadIO
 import utils.PiplineModule
 import core.fetch.FetchOut
 import core.gpr.GprReadIO
@@ -98,8 +99,11 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
 
   // CSR
   out.bits.zicsr := Mux(cs(ZicsrEnField), func3(1, 0), 0.U(2.W))
-  out.bits.csrAddr := inst(31, 20)
-  out.bits.csrSrc := DontCare // TODO: CSR读
+  val csrAddr = inst(31, 20)
+  out.bits.csrAddr := csrAddr
+  val csrReadIO = IO(new CsrReadIO)
+  csrReadIO.data := csrAddr
+  out.bits.csrSrc := csrReadIO.data
 
   // SYS
   out.bits.ret := cs(RetField)
@@ -107,7 +111,8 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.fenceVMA := cs(FenceVMAField)
 
   // trap
+  val invInst = cs(InvInstField) || csrReadIO.err
   out.bits.pc := cur.pc
-  out.bits.trap := cur.trap || cs(InvInstField)
+  out.bits.trap := cur.trap || invInst
   out.bits.cause := Mux(cur.trap, cur.cause, 2.U) // 2: illegal instruction
 }

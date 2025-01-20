@@ -4,6 +4,7 @@ import utils.SRam
 import core.fetch.Fetch
 import core.decode.Decode
 import core.exec.Alu
+import core.csr.Csr
 
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
@@ -13,5 +14,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new Alu, args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Csr, args, firtoolOptions)
 }

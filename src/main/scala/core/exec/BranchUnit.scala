@@ -1,4 +1,4 @@
-package core.decode
+package core.exec
 
 import chisel3._
 

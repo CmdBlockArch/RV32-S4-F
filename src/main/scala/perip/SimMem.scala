@@ -2,7 +2,7 @@ package perip
 
 import chisel3._
 import chisel3.util.circt.dpi.{DPINonVoidFunctionImport, DPIClockedVoidFunctionImport}
-import utils._
+import utils.MuxLookup1H
 
 object BurstAddrNext {
   def apply(addr: UInt, len: UInt, size: UInt, burst: UInt): UInt = {
