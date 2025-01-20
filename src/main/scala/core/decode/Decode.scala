@@ -6,99 +6,108 @@ import chisel3.util.experimental.decode.DecodeTable
 import utils.PiplineModule
 import core.fetch.FetchOut
 import core.gpr.GprReadIO
+import core.exec.Alu
 
 class DecodeOut extends Bundle {
-  val valA = Output(UInt(32.W))
-  val valB = Output(UInt(32.W))
-  val valC = Output(UInt(32.W))
-
-  val func = Output(UInt(4.W))
-  val mul = Output(Bool())
+  // 运算数
+  val src1 = Output(UInt(32.W))
+  val src2 = Output(UInt(32.W))
+  val imm = Output(UInt(32.W))
+  // ALU选数/功能
+  val valASel = Output(UInt(3.W))
+  val valBSel = Output(UInt(3.W))
+  val aluFunc = Output(new Alu.FuncBundle) // 分支类型复用
+  // ALU前递路径
   val rd = Output(UInt(5.W))
-
+  val fwReady = Output(Bool()) // rd是否可以直接前递
+  // 分支和跳转
+  val branch = Output(Bool())
+  val jal = Output(Bool())
+  val jalr = Output(Bool())
+  // 功能单元控制
+  val mul = Output(Bool())
   val mem = Output(UInt(4.W))
-
-  val zicsr = Output(UInt(2.W))
+  val amoFunc = Output(UInt(4.W))
+  // CSR
+  val zicsr = Output(UInt(3.W))
   val csrAddr = Output(UInt(12.W))
-
+  val csrSrc = Output(UInt(32.W))
+  // SYS
   val ret = Output(UInt(2.W))
   val fenceI = Output(Bool())
   val fenceVMA = Output(Bool())
-
+  // 异常处理
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
 }
 
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
-  val io = IO(new Bundle {
-    val jmp = Output(Bool())
-    val dnpc = Output(UInt(32.W))
-  })
-
-  // 译码指令
+  // 译码指令位域
+  val inst = cur.inst
   val func3 = cur.inst(14, 12)
-  val funcs = cur.inst(30)
+  val calSign = cur.inst(30)
   val rs1 = cur.inst(19, 15)
   val rs2 = cur.inst(24, 20)
   val rd = cur.inst(11, 7)
 
-  // 译码寄存器
+  // 从指令译码控制信号
+  val decodeTable = new DecodeTable(InstPattern.patterns, InstField.fields)
+  val table = decodeTable.table
+  val cs = decodeTable.decode(inst) // 控制信号
+
+  // 译码GPR操作数
+  // TODO: 前递
   val gprReadIO = IO(new GprReadIO)
   gprReadIO.rs1 := rs1
   gprReadIO.rs2 := rs2
-  val src1 = gprReadIO.src1
-  val src2 = gprReadIO.src2
+  out.bits.src1 := gprReadIO.src1
+  out.bits.src2 := gprReadIO.src2
 
   // 译码立即数
-  val immI = Cat(Fill(20, cur.inst(31)), cur.inst(31, 20))
-  val immS = Cat(Fill(20, cur.inst(31)), cur.inst(31, 25), cur.inst(11, 7))
-  val immB = Cat(Fill(20, cur.inst(31)), cur.inst(7), cur.inst(30, 25), cur.inst(11, 8), 0.U(1.W))
-  val immU = Cat(cur.inst(31, 12), 0.U(12.W))
-  val immJ = Cat(Fill(12, cur.inst(31)), cur.inst(19, 12), cur.inst(20), cur.inst(30, 21), 0.U(1.W))
-  val immZ = Cat(0.U(27.W), cur.inst(19, 15))
+  val immI = Cat(Fill(20, inst(31)), inst(31, 20))
+  val immS = Cat(Fill(20, inst(31)), inst(31, 25), inst(11, 7))
+  val immB = Cat(Fill(20, inst(31)), inst(7), inst(30, 25), inst(11, 8), 0.U(1.W))
+  val immU = Cat(inst(31, 12), 0.U(12.W))
+  val immJ = Cat(Fill(12, inst(31)), inst(19, 12), inst(20), inst(30, 21), 0.U(1.W))
+  val immZ = Cat(0.U(27.W), inst(19, 15))
+  out.bits.imm := Mux1H(cs(ImmSelField), Seq(immI, immS, immB, immU, immJ, immZ))
 
-  // 译码控制信号
-  val decodeTable = new DecodeTable(InstPattern.patterns, InstField.fields)
-  val table = decodeTable.table
-  val decodeRes = decodeTable.decode(cur.inst)
-  val invInst = decodeRes(InvInstField)
-  out.bits.func := Mux(decodeRes(FuncEnField), Cat(funcs && decodeRes(SignEnField), func3), 0.U(4.W))
-  out.bits.mul := decodeRes(MulField)
-  out.bits.rd := Mux(decodeRes(RdEnField), rd, 0.U(5.W))
-  out.bits.mem := decodeRes(MemField)
-  out.bits.zicsr := Mux(decodeRes(ZicsrEnField), func3(1, 0), 0.U(2.W))
-  out.bits.csrAddr := cur.inst(31, 20)
-  out.bits.ret := decodeRes(RetField)
-  out.bits.fenceI := decodeRes(fenceIField)
-  out.bits.fenceVMA := decodeRes(fenceVMAField)
+  // ALU
+  out.bits.valASel := cs(ValASelField)
+  out.bits.valBSel := cs(ValBSelField)
+  val aluFuncEn = cs(AluFuncEnField)
+  val aluSignEn = cs(AluSignEnField)
+  out.bits.aluFunc := Alu.decodeFunc(
+    Mux(aluFuncEn, func3, 0.U(3.W)), Mux(aluSignEn, calSign, false.B))
 
-  // 选数
-  out.bits.valA := Mux1H(decodeRes(valASelField),
-    Seq(0.U(32.W), cur.pc, src1))
-  out.bits.valB := Mux1H(decodeRes(ValBSelField),
-    Seq(4.U(32.W), immU, immI, src2))
-  out.bits.valC := Mux1H(decodeRes(ValCSelField), Seq(
-    src1 + Mux(decodeRes(MemField)(3), immI, immS),
-    src1, immZ))
+  // rd和前递
+  out.bits.rd := Mux(cs(RdEnField), rd, 0.U(5.W))
+  out.bits.fwReady := cs(FwReadyField)
+
+  // 分支和跳转
+  val jmpFlag = cs(JmpField)
+  out.bits.jal := jmpFlag(0)
+  out.bits.jalr := jmpFlag(1)
+  out.bits.branch := jmpFlag(2)
+
+  // 功能单元控制
+  out.bits.mul := cs(MulField)
+  out.bits.mem := cs(MemField)
+  out.bits.amoFunc := Cat(inst(31, 29), inst(27))
+
+  // CSR
+  out.bits.zicsr := Mux(cs(ZicsrEnField), func3(1, 0), 0.U(2.W))
+  out.bits.csrAddr := inst(31, 20)
+  out.bits.csrSrc := DontCare // TODO: CSR读
+
+  // SYS
+  out.bits.ret := cs(RetField)
+  out.bits.fenceI := cs(FenceIField)
+  out.bits.fenceVMA := cs(FenceVMAField)
 
   // trap
   out.bits.pc := cur.pc
-  out.bits.trap := cur.trap || invInst
+  out.bits.trap := cur.trap || cs(InvInstField)
   out.bits.cause := Mux(cur.trap, cur.cause, 2.U) // 2: illegal instruction
-
-  // 跳转
-  val jmpFlag = decodeRes(JmpField)
-  val jal = jmpFlag(0)
-  val jalr = jmpFlag(1)
-  val branch = jmpFlag(2)
-
-  val bru = Module(new BranchUnit)
-  bru.io.src1 := src1
-  bru.io.src2 := src2
-  bru.io.func := func3
-  val branchJmpEn = bru.io.jmp
-
-  io.jmp := valid && ((branch && branchJmpEn) || jal || jalr)
-  io.dnpc := Mux(jalr, src1, cur.pc) + Mux1H(jmpFlag, Seq(immJ, immI, immB))
 }

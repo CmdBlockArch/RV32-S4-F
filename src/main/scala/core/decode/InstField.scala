@@ -5,22 +5,33 @@ import chisel3.util.BitPat
 import chisel3.util.experimental.decode._
 import OpcodeRawStr._
 
-object valASelField extends DecodeField[InstPattern, UInt] {
+object ImmSelField extends DecodeField[InstPattern, UInt] {
+  override def name = "immSel"
+  override def chiselType = UInt(6.W)
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case JALR | LOAD | CALRI => BitPat("b000001") // immI
+      case STORE               => BitPat("b000010") // immS
+      case BRANCH              => BitPat("b000100") // immB
+      case LUI | AUIPC         => BitPat("b001000") // immU
+      case JAL                 => BitPat("b010000") // immJ
+      case SYSTEM => op.func3.rawString match {
+        case "000" => dc
+        case _ => BitPat("b100000") // Zicsr, immZ
+      }
+      case _ => dc
+    }
+  }
+}
+
+object ValASelField extends DecodeField[InstPattern, UInt] {
   override def name = "valASel"
   override def chiselType = UInt(3.W)
   override def genTable(op: InstPattern) = {
     op.opcode.rawString match {
-      case LUI | STORE        => BitPat("b001") // 0
+      case LUI => BitPat("b001") // 0
       case AUIPC | JAL | JALR => BitPat("b010") // pc
-      case CALRI | CALRR      => BitPat("b100") // src1
-      case SYSTEM => op.func3.rawString match {
-        case "000" => dc
-        case _ => BitPat("b001") // zicsr: 0
-      }
-      case ATOMIC => op.func5.rawString match {
-        case "00010" => dc // lr
-        case _ => BitPat("b001") // sc,amo: 0
-      }
+      case LOAD | STORE | CALRI | CALRR => BitPat("b100") // src1
       case _ => dc
     }
   }
@@ -28,66 +39,32 @@ object valASelField extends DecodeField[InstPattern, UInt] {
 
 object ValBSelField extends DecodeField[InstPattern, UInt] {
   override def name = "valBSel"
-  override def chiselType = UInt(5.W)
-  override def genTable(op: InstPattern): BitPat = {
-    op.opcode.rawString match {
-      case JAL | JALR    => BitPat("b00001") // 4
-      case LUI | AUIPC   => BitPat("b00010") // immU
-      case CALRI         => BitPat("b00100") // immI
-      case STORE | CALRR => BitPat("b01000") // src2
-      case SYSTEM => op.func3.rawString match {
-        case "000" => dc
-        case _ => BitPat("b10000") // zicsr: csrVal
-      }
-      case ATOMIC => op.func5.rawString match {
-        case "00010" => dc // lr
-        case _ => BitPat("b01000") // sc,amo: src2
-      }
-      case _ => dc
-    }
-  }
-}
-
-object ValCSelField extends DecodeField[InstPattern, UInt] {
-  override def name = "valCSel"
   override def chiselType = UInt(3.W)
   override def genTable(op: InstPattern): BitPat = {
     op.opcode.rawString match {
-      case LOAD | STORE => BitPat("b001") // src1+imm（用mem选择立即数类型）
-      case SYSTEM => op.func3.rawString match {
-        case "000" => dc
-        case s if s(0) == '0' => BitPat("b010") // CSRR: src1
-        case s if s(0) == '1' => BitPat("b100") // CSRI: immZ
-      }
-      case ATOMIC => BitPat("b010") // src1
+      case JAL | JALR => BitPat("b001") // 4
+      case LUI | AUIPC | LOAD | STORE | CALRI => BitPat("b010") // imm
+      case CALRR => BitPat("b100") // src2
       case _ => dc
     }
   }
 }
 
-object FuncEnField extends BoolDecodeField[InstPattern] {
+object AluFuncEnField extends BoolDecodeField[InstPattern] {
+  override def name = "aluFuncEn"
   // 1: func = func3 + funcs
   // 0: func = 0
-  override def name = "funcEn"
   override def genTable(op: InstPattern): BitPat = {
     op.opcode.rawString match {
-      case CALRI | CALRR => y
-      case LUI | AUIPC | JAL | JALR | STORE => n
-      case SYSTEM => op.func3.rawString match {
-        case "000" => dc
-        case _ => n // zicsr
-      }
-      case ATOMIC => op.func5.rawString match {
-        case "00010" => dc // lr
-        case _ => n // sc, amo
-      }
+      case CALRI | CALRR | BRANCH => y // 分支func复用
+      case LUI | AUIPC | JAL | JALR | LOAD | STORE => n
       case _ => dc
     }
   }
 }
 
-object SignEnField extends BoolDecodeField[InstPattern] {
-  override def name = "signEn" // 是否为有符号操作
+object AluSignEnField extends BoolDecodeField[InstPattern] {
+  override def name = "aluSignEn" // 是否为有符号操作
   override def genTable(op: InstPattern): BitPat = {
     op.opcode.rawString match {
       case CALRI => op.func3.rawString match {
@@ -99,20 +76,8 @@ object SignEnField extends BoolDecodeField[InstPattern] {
         case "101" | "000" => y // sra, sub
         case _ => dc
       }
+      case LUI | AUIPC | JAL | JALR | LOAD | STORE => n
       case _ => dc
-    }
-  }
-}
-
-object MulField extends BoolDecodeField[InstPattern] {
-  override def name = "mul" // 是否为乘法操作
-  override def genTable(op: InstPattern): BitPat = {
-    op.opcode.rawString match {
-      case CALRR => op.func7.rawString match {
-        case "0000001" => y // mul
-        case _ => n
-      }
-      case _ => n
     }
   }
 }
@@ -126,6 +91,46 @@ object RdEnField extends BoolDecodeField[InstPattern] {
       case SYSTEM => op.func3.rawString match {
         case "000" => dc // rd位均为0
         case _ => y // zicsr
+      }
+      case _ => n
+    }
+  }
+}
+
+object FwReadyField extends BoolDecodeField[InstPattern] {
+  override def name = "fwReady" // Exec阶段是否可以直接前递
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case LUI | AUIPC | JAL | JALR | CALRI => y
+      case CALRR => op.func7.rawString match {
+        case "0000001" => n // 乘法无法直接前递
+        case _ => y
+      }
+      case _ => n
+    }
+  }
+}
+
+object JmpField extends DecodeField[InstPattern, UInt] {
+  override def name = "jmp" // 跳转类型
+  override def chiselType = UInt(3.W)
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case JAL => BitPat("b001")
+      case JALR => BitPat("b010")
+      case BRANCH => BitPat("b100")
+      case _ => dc
+    }
+  }
+}
+
+object MulField extends BoolDecodeField[InstPattern] {
+  override def name = "mul" // 是否为乘法操作
+  override def genTable(op: InstPattern): BitPat = {
+    op.opcode.rawString match {
+      case CALRR => op.func7.rawString match {
+        case "0000001" => y // mul
+        case _ => n
       }
       case _ => n
     }
@@ -184,14 +189,14 @@ object RetField extends DecodeField[InstPattern, UInt] {
   }
 }
 
-object fenceIField extends BoolDecodeField[InstPattern] {
+object FenceIField extends BoolDecodeField[InstPattern] {
   override def name = "fenceI" // 是否为FENCE.I操作
   override def genTable(op: InstPattern): BitPat = {
     if (InstPattern.fencei.bitPat.cover(op.inst)) y else n
   }
 }
 
-object fenceVMAField extends BoolDecodeField[InstPattern] {
+object FenceVMAField extends BoolDecodeField[InstPattern] {
   override def name = "fenceVMA" // 是否为FENCE.VMA操作
   override def genTable(op: InstPattern): BitPat = {
     if (InstPattern.sfcvma.bitPat.cover(op.inst)) y else n
@@ -204,34 +209,12 @@ object InvInstField extends BoolDecodeField[InstPattern] {
   override def genTable(op: InstPattern): BitPat = n
 }
 
-object JmpField extends DecodeField[InstPattern, UInt] {
-  override def name = "jmp" // 跳转类型
-  override def chiselType = UInt(3.W)
-  override def genTable(op: InstPattern): BitPat = {
-    op.opcode.rawString match {
-      case JAL => BitPat("b001")
-      case JALR => BitPat("b010")
-      case BRANCH => BitPat("b100")
-      case _ => dc
-    }
-  }
-}
+
 
 object InstField {
   val fields = Seq(
-    valASelField,
-    ValBSelField,
-    ValCSelField,
-    FuncEnField,
-    SignEnField,
-    MulField,
-    RdEnField,
-    MemField,
-    ZicsrEnField,
-    RetField,
-    fenceIField,
-    fenceVMAField,
-    InvInstField,
-    JmpField,
+    ImmSelField, ValASelField, ValBSelField, AluFuncEnField, AluSignEnField,
+    RdEnField, FwReadyField, JmpField, MulField, MemField, ZicsrEnField,
+    RetField, FenceIField, FenceVMAField, InvInstField
   )
 }

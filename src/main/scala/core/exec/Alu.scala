@@ -17,54 +17,80 @@ object Alu {
       BitPat("b111") -> BitPat("b10000000")
     ), BitPat.dontCare(8)
   )
+
+  class FuncBundle extends Bundle {
+    val sign = Bool()
+    val adderEn = Bool()
+    val sub = Bool()
+    val outE = Bool()
+
+    val add = Bool()
+    val shl = Bool()
+    val lts = Bool()
+    val ltu = Bool()
+    val xor = Bool()
+    val shr = Bool()
+    val or  = Bool()
+    val and = Bool()
+  }
+
+  def decodeFunc(func3: UInt, sign: Bool): FuncBundle = {
+    val func1H = decoder(func3, funcTruthTable)
+    val add = func1H(0)
+    val lts = func1H(2)
+    val ltu = func1H(3)
+
+    val funcBundle = Wire(new FuncBundle)
+    funcBundle.sign := sign
+    funcBundle.adderEn := add || lts || ltu
+    funcBundle.sub := sign || lts || ltu // 是否做减法，是减法需要将alu_b取反，在加法器输入进位
+    funcBundle.outE := !(lts || ltu)
+
+    funcBundle.add := func1H(0)
+    funcBundle.shl := func1H(1)
+    funcBundle.lts := func1H(2)
+    funcBundle.ltu := func1H(3)
+    funcBundle.xor := func1H(4)
+    funcBundle.shr := func1H(5)
+    funcBundle.or  := func1H(6)
+    funcBundle.and := func1H(7)
+
+    funcBundle
+  }
 }
 
 class Alu extends Module {
   val io = IO(new Bundle {
     val a = Input(UInt(32.W))
     val b = Input(UInt(32.W))
-    val func = Input(UInt(3.W))
-    val sign = Input(Bool())
     val res = Output(UInt(32.W))
   })
 
-  val func1H = decoder(io.func, Alu.funcTruthTable)
-  val add = func1H(0)
-  val shl = func1H(1)
-  val lts = func1H(2)
-  val ltu = func1H(3)
-  val xor = func1H(4)
-  val shr = func1H(5)
-  val or  = func1H(6)
-  val and = func1H(7)
-
-  val adderEn = add || lts || ltu
-  // 是否做减法，是减法需要将alu_b取反，在加法器输入进位
-  val sub = io.sign || lts || ltu
+  val func = IO(Input(new Alu.FuncBundle))
 
   val a = io.a
-  val b = io.b ^ Fill(32, sub)
+  val b = io.b ^ Fill(32, func.sub)
 
   val shift = io.b(4, 0)
 
-  val adderRes = (a +& b) + sub.asUInt
+  val adderRes = (a +& b) + func.sub.asUInt
 
   val e = Mux1H(Seq(
-    adderEn -> adderRes(31, 0),
-    shl -> (a << shift)(31, 0),
-    xor -> (a ^ b),
-    shr -> Mux(io.sign, (a.asSInt >> shift).asUInt, a >> shift),
-    or  -> (a | b),
-    and -> (a & b),
+    func.adderEn -> adderRes(31, 0),
+    func.shl -> (a << shift)(31, 0),
+    func.xor -> (a ^ b),
+    func.shr -> Mux(func.sign, (a.asSInt >> shift).asUInt, a >> shift),
+    func.or  -> (a | b),
+    func.and -> (a & b),
   ))
 
-  val cf = Mux(adderEn, adderRes(32), false.B)
+  val cf = Mux(func.adderEn, adderRes(32), false.B)
   val sf = e(31)
   val of = (a(31) === b(31)) && (sf ^ a(31))
 
   io.res := Mux1H(Seq(
-    lts -> Cat(0.U(31.W), sf ^ of),
-    ltu -> Cat(0.U(31.W), !cf),
-    !(lts || ltu) -> e
+    func.lts -> Cat(0.U(31.W), sf ^ of),
+    func.ltu -> Cat(0.U(31.W), !cf),
+    func.outE -> e
   ))
 }
