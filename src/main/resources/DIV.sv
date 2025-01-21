@@ -65,19 +65,11 @@ module DIV (
       if (in_valid) ;
     end else if (st_hold) begin
       if (flush | out_ready) begin
-        if (in_valid) begin
-          ;
-        end else begin
-          state_next = ST_IDLE;
-        end
+        state_next = ST_IDLE;
       end
     end else begin
       if (flush) begin
-        if (in_valid) begin
-          ;
-        end else begin
-          state_next = ST_IDLE;
-        end
+        state_next = ST_IDLE;
       end else begin
         state_next = state - 1;
         a_next = rem[32] ? {a[62:0], 1'b0} : {rem[31:0], a[30:0], 1'b0};
@@ -86,7 +78,7 @@ module DIV (
     end
   end
 
-  assign in_ready = st_idle | (out_ready & out_valid);
+  assign in_ready = st_idle;
   assign out_valid = st_hold;
 
   assign out_quot = ({32{qs}} ^ q) + {31'b0, qs};

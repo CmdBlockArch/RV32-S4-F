@@ -75,19 +75,11 @@ module MUL_radix_4 (
       if (in_valid) ;
     end else if (st_hold) begin
       if (flush | out_ready) begin
-        if (in_valid) begin
-          ; // input
-        end else begin
-          state_next = 0;
-        end
+        state_next = 0;
       end
     end else begin
       if (flush) begin
-        if (in_valid) begin
-          ; // input
-        end else begin
-          state_next = 0;
-        end
+        state_next = 0;
       end else begin
         state_next = state + 6'd2;
         prod_next = {{2{prod_next_uns[67]}}, prod_next_uns[67:2]};
@@ -95,7 +87,7 @@ module MUL_radix_4 (
     end
   end
 
-  assign in_ready = st_idle | (out_ready & st_hold);
+  assign in_ready = st_idle;
   assign out_valid = st_hold;
   assign out_prod = prod[63:0];
 

@@ -47,7 +47,7 @@ module DIV_test (
     end
   end
 
-  assign in_ready = st_idle | (out_ready & out_valid);
+  assign in_ready = st_idle;
 
   always_comb begin
     state_next = state;
@@ -62,9 +62,7 @@ module DIV_test (
 
     if (st_hold) begin
       if (out_ready | flush) begin
-        if (~in_valid) begin
-          state_next = ST_IDLE;
-        end
+        state_next = ST_IDLE;
       end
     end
   end
