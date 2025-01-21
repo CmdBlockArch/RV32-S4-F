@@ -79,8 +79,9 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.valBSel := cs(ValBSelField)
   val aluFuncEn = cs(AluFuncEnField)
   val aluSignEn = cs(AluSignEnField)
+  val branch = out.bits.branch
   out.bits.aluFunc := Alu.decodeFunc(
-    Mux(aluFuncEn, func3, 0.U(3.W)), Mux(aluSignEn, calSign, false.B))
+    Mux(aluFuncEn, func3, 0.U(3.W)), (aluSignEn && calSign) || branch)
 
   // rd和前递
   out.bits.rd := Mux(cs(RdEnField), rd, 0.U(5.W))

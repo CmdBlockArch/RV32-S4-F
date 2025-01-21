@@ -31,7 +31,7 @@ object ValASelField extends DecodeField[InstPattern, UInt] {
     op.opcode.rawString match {
       case LUI => BitPat("b001") // 0
       case AUIPC | JAL | JALR => BitPat("b010") // pc
-      case LOAD | STORE | CALRI | CALRR => BitPat("b100") // src1
+      case LOAD | STORE | CALRI | CALRR | BRANCH => BitPat("b100") // src1
       case _ => dc
     }
   }
@@ -44,7 +44,7 @@ object ValBSelField extends DecodeField[InstPattern, UInt] {
     op.opcode.rawString match {
       case JAL | JALR => BitPat("b001") // 4
       case LUI | AUIPC | LOAD | STORE | CALRI => BitPat("b010") // imm
-      case CALRR => BitPat("b100") // src2
+      case CALRR | BRANCH => BitPat("b100") // src2
       case _ => dc
     }
   }

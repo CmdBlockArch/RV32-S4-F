@@ -64,6 +64,7 @@ class Alu extends Module {
     val a = Input(UInt(32.W))
     val b = Input(UInt(32.W))
     val res = Output(UInt(32.W))
+    val jmp = Output(Bool())
   })
 
   val func = IO(Input(new Alu.FuncBundle))
@@ -74,14 +75,15 @@ class Alu extends Module {
   val shift = io.b(4, 0)
 
   val adderRes = (a +& b) + func.sub.asUInt
+  val xorRes = a ^ io.b
 
   val e = Mux1H(Seq(
     func.adderEn -> adderRes(31, 0),
     func.shl -> (a << shift)(31, 0),
-    func.xor -> (a ^ b),
+    func.xor -> xorRes,
     func.shr -> Mux(func.sign, (a.asSInt >> shift).asUInt, a >> shift),
-    func.or  -> (a | b),
-    func.and -> (a & b),
+    func.or  -> (a | io.b),
+    func.and -> (a & io.b),
   ))
 
   val cf = Mux(func.adderEn, adderRes(32), false.B)
@@ -93,4 +95,22 @@ class Alu extends Module {
     func.ltu -> Cat(0.U(31.W), !cf),
     func.outE -> e
   ))
+
+  val brCF = adderRes(32)
+  val brSF = adderRes(31)
+  val brOF = (a(31) === b(31)) && (brSF ^ a(31))
+
+  val brNe = xorRes.orR
+  val brLts = brSF ^ brOF
+  val brGeu = brCF
+
+  io.jmp := Mux1H(Seq(
+    func.add -> !brNe, // eq
+    func.shl -> brNe, // ne
+    func.xor -> brLts, // lt
+    func.shr -> !brLts, // ge
+    func.or  -> !brGeu, // ltu
+    func.and -> brGeu // geu
+  ))
+
 }
