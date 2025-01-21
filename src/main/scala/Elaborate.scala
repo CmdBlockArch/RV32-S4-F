@@ -3,7 +3,7 @@ import core.misc.{MemReadArb, MemWriteArb}
 import utils.SRam
 import core.fetch.Fetch
 import core.decode.Decode
-import core.exec.Alu
+import core.exec.{Alu, Exec}
 import core.csr.Csr
 
 object Elaborate extends App {
@@ -14,5 +14,5 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new Csr, args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Exec, args, firtoolOptions)
 }

@@ -19,7 +19,7 @@ class Div extends Module {
   })
   val flush = IO(Input(Bool()))
 
-  class DivInternal extends BlackBox with HasBlackBoxResource {
+  class DIV_test extends BlackBox with HasBlackBoxResource {
     val io = IO(new Bundle {
       val clock = Input(Clock())
       val reset = Input(Reset())
@@ -36,10 +36,10 @@ class Div extends Module {
       val out_quot = Output(UInt(32.W))
       val out_rem = Output(UInt(32.W))
     })
-    addResource("/MUL_test.sv")
+    addResource("/DIV_test.sv")
   }
 
-  val div = Module(new DivInternal)
+  val div = Module(new DIV_test)
   div.io.clock := clock
   div.io.reset := reset
   div.io.flush := flush

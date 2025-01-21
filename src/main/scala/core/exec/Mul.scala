@@ -18,7 +18,7 @@ class Mul extends Module {
   })
   val flush = IO(Input(Bool()))
 
-  class MulInternal extends BlackBox with HasBlackBoxResource {
+  class MUL_test extends BlackBox with HasBlackBoxResource {
     val io = IO(new Bundle {
       val clock = Input(Clock())
       val reset = Input(Reset())
@@ -37,7 +37,7 @@ class Mul extends Module {
     addResource("/MUL_test.sv")
   }
 
-  val mul = Module(new MulInternal)
+  val mul = Module(new MUL_test)
   mul.io.clock := clock
   mul.io.reset := reset
   mul.io.flush := flush

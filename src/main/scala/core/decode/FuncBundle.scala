@@ -59,14 +59,14 @@ class FuncBundle extends Bundle {
   val and = Bool()
 
   def brFunc = {
-    val f = new Bundle {
+    val f = Wire(new Bundle {
       val eq = Bool()
       val ne = Bool()
       val lt = Bool()
       val ge = Bool()
       val ltu = Bool()
       val geu = Bool()
-    }
+    })
     f.eq := add
     f.ne := shl
     f.lt := xor
@@ -77,7 +77,7 @@ class FuncBundle extends Bundle {
   }
 
   def mulFunc = {
-    val f = new Bundle {
+    val f = Wire(new Bundle {
       val mul = Bool()
       val mulh = Bool()
       val mulhsu = Bool()
@@ -86,7 +86,7 @@ class FuncBundle extends Bundle {
       val divu = Bool()
       val rem = Bool()
       val remu = Bool()
-    }
+    })
     f.mul := add
     f.mulh := shl
     f.mulhsu := lts

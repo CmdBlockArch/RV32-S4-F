@@ -3,7 +3,8 @@ package core.exec
 import chisel3._
 import chisel3.util._
 import core.decode.DecodeOut
-import utils.{PiplineModule, MuxLookup1H}
+import core.gpr.GprFwIO
+import utils.{MuxLookup1H, PiplineModule}
 
 class ExecOut extends Bundle {
   val rd = Output(UInt(5.W))
@@ -28,10 +29,6 @@ class ExecOut extends Bundle {
 
 class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val io = IO(new Bundle {
-    val rd = Output(UInt(5.W))
-    val fwReady = Output(Bool())
-    val fwVal = Input(UInt(32.W))
-
     val jmp = Output(Bool())
     val dnpc = Output(UInt(32.W))
   })
@@ -44,9 +41,10 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val aluRes = alu.io.res
 
   // 前递
-  io.rd := cur.rd
-  io.fwReady := valid && cur.fwReady
-  io.fwVal := aluRes
+  val gprFwIO = IO(new GprFwIO)
+  gprFwIO.valid := valid && cur.fwReady
+  gprFwIO.rd := cur.rd
+  gprFwIO.fwVal := aluRes
 
   // 分支和跳转
   val brJmp = alu.io.jmp
@@ -97,7 +95,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   ))
   out.bits.csrWen := zicsr && (out.bits.csrData === cur.csrSrc)
 
-  override def outCond = cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B)
+  setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
 
   out.bits.rd := cur.rd
   out.bits.rdVal := Mux1H(Seq(
