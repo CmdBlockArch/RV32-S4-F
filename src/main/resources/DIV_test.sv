@@ -47,21 +47,21 @@ module DIV_test (
     end
   end
 
-  assign in_ready = st_idle | (out_ready & out_valid) | flush;
+  assign in_ready = st_idle | (out_ready & out_valid);
 
   always_comb begin
     state_next = state;
     quot_next = quot;
     rem_next = rem;
 
-    if (in_valid & in_valid) begin
-      state_next = ST_HOLD;
+    if (in_valid & in_ready) begin
+      state_next = flush ? ST_IDLE : ST_HOLD;
       quot_next = ({32{qs}} ^ q) + {31'b0, qs};
       rem_next = ({32{rs}} ^ r) + {31'b0, rs};
     end
 
     if (st_hold) begin
-      if ((out_valid & out_ready) | flush) begin
+      if (out_ready | flush) begin
         if (~in_valid) begin
           state_next = ST_IDLE;
         end
@@ -69,7 +69,7 @@ module DIV_test (
     end
   end
 
-  assign out_valid = st_hold & ~flush;
+  assign out_valid = st_hold;
   assign out_quot = quot;
   assign out_rem = rem;
 

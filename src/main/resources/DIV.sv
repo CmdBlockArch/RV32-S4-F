@@ -54,7 +54,7 @@ module DIV (
     q_next = q;
 
     if (in_ready & in_valid) begin
-      state_next = 6'd31;
+      state_next = flush ? ST_IDLE : 6'd31;
       a_next = {32'b0, ({32{in_as}} ^ in_a) + {31'b0, in_as}};
       b_next = ({32{in_bs}} ^ in_b) + {31'b0, in_bs};
       qs_next = (in_a[31] ^ in_b[31]) & in_sign;
@@ -86,8 +86,8 @@ module DIV (
     end
   end
 
-  assign in_ready = st_idle | flush | (out_ready & st_hold);
-  assign out_valid = st_hold & ~flush;
+  assign in_ready = st_idle | (out_ready & out_valid);
+  assign out_valid = st_hold;
 
   assign out_quot = ({32{qs}} ^ q) + {31'b0, qs};
   assign out_rem  = ({32{rs}} ^ a[63:32]) + {31'b0, rs};

@@ -7,7 +7,6 @@ import core.csr.CsrReadIO
 import utils.PiplineModule
 import core.fetch.FetchOut
 import core.gpr.GprReadIO
-import core.exec.Alu
 
 class DecodeOut extends Bundle {
   // 运算数
@@ -17,7 +16,7 @@ class DecodeOut extends Bundle {
   // ALU选数/功能
   val valASel = Output(UInt(3.W))
   val valBSel = Output(UInt(3.W))
-  val aluFunc = Output(new Alu.FuncBundle) // 分支类型复用
+  val aluFunc = Output(new FuncBundle) // 分支类型复用
   // ALU前递路径
   val rd = Output(UInt(5.W))
   val fwReady = Output(Bool()) // rd是否可以直接前递
@@ -80,7 +79,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val aluFuncEn = cs(AluFuncEnField)
   val aluSignEn = cs(AluSignEnField)
   val branch = out.bits.branch
-  out.bits.aluFunc := Alu.decodeFunc(
+  out.bits.aluFunc := FuncBundle.decodeFunc(
     Mux(aluFuncEn, func3, 0.U(3.W)), (aluSignEn && calSign) || branch)
 
   // rd和前递
