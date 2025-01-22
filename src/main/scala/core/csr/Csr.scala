@@ -8,11 +8,24 @@ class CsrReadIO extends Bundle {
   val err = Input(Bool())
 }
 
+class CsrWriteIO extends Bundle {
+  val en = Output(Bool())
+  val addr = Output(UInt(12.W))
+  val data = Output(UInt(32.W))
+}
+
 class Csr extends Module {
   val csrRegFile = new CsrRegFile
 
   val csrReadIO = IO(Flipped(new CsrReadIO))
-  val (csrReadData: UInt, csrReadErr: Bool) = csrRegFile.getCsrSrc(csrReadIO.addr)
+  val csrReadPort = new CsrReadPort(csrRegFile)
+  val (csrReadData: UInt, csrReadErr: Bool) = csrReadPort(csrReadIO.addr)
   csrReadIO.data := csrReadData
   csrReadIO.err := csrReadErr
+
+  val csrWriteIO = IO(Flipped(new CsrWriteIO))
+  val csrWritePort = new CsrWritePort(csrRegFile)
+  when (csrWriteIO.en) {
+    csrWritePort(csrWriteIO.addr, csrWriteIO.data)
+  }
 }

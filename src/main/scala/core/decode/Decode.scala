@@ -29,7 +29,8 @@ class DecodeOut extends Bundle {
   val mem = Output(UInt(4.W))
   val amoFunc = Output(UInt(4.W))
   // CSR
-  val zicsr = Output(UInt(3.W))
+  val zicsr = Output(Bool())
+  val csrWen = Output(Bool())
   val csrAddr = Output(UInt(12.W))
   val csrSrc = Output(UInt(32.W))
   // SYS
@@ -57,12 +58,12 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val cs = decodeTable.decode(inst) // 控制信号
 
   // 译码GPR操作数
-  // TODO: 前递
   val gprReadIO = IO(new GprReadIO)
   gprReadIO.rs1 := rs1
   gprReadIO.rs2 := rs2
   out.bits.src1 := gprReadIO.src1
   out.bits.src2 := gprReadIO.src2
+  setOutCond(gprReadIO.src1Ready && gprReadIO.src2Ready)
 
   // 译码立即数
   val immI = Cat(Fill(20, inst(31)), inst(31, 20))
@@ -98,12 +99,17 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.amoFunc := Cat(inst(31, 29), inst(27))
 
   // CSR
-  out.bits.zicsr := Mux(cs(ZicsrEnField), func3(1, 0), 0.U(2.W))
+  val zicsr = cs(ZicsrEnField)
+  out.bits.zicsr := zicsr
+  val csrWen = !func3(1) || Mux(func3(2), immZ.orR, rs1.orR)
+  out.bits.csrWen := csrWen
   val csrAddr = inst(31, 20)
   out.bits.csrAddr := csrAddr
   val csrReadIO = IO(new CsrReadIO)
   csrReadIO.data := csrAddr
   out.bits.csrSrc := csrReadIO.data
+  val csrWriteRO = csrAddr(11, 10).andR && csrWen
+  val csrErr = zicsr && (csrWriteRO || csrReadIO.err)
 
   // SYS
   out.bits.ret := cs(RetField)
@@ -111,7 +117,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.fenceVMA := cs(FenceVMAField)
 
   // trap
-  val invInst = cs(InvInstField) || csrReadIO.err
+  val invInst = cs(InvInstField) || csrErr
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst
   out.bits.cause := Mux(cur.trap, cur.cause, 2.U) // 2: illegal instruction

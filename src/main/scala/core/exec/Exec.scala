@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import core.decode.DecodeOut
 import core.gpr.GprFwIO
-import utils.{MuxLookup1H, PiplineModule}
+import utils.PiplineModule
 
 class ExecOut extends Bundle {
   val rd = Output(UInt(5.W))
@@ -42,8 +42,9 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
 
   // 前递
   val gprFwIO = IO(new GprFwIO)
-  gprFwIO.valid := valid && cur.fwReady
+  gprFwIO.valid := valid
   gprFwIO.rd := cur.rd
+  gprFwIO.ready := cur.fwReady
   gprFwIO.fwVal := aluRes
 
   // 分支和跳转
@@ -85,15 +86,15 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val divValValid = div.out.valid || divZero || (divSign && divOf)
 
   // CSR
-  val zicsr = cur.zicsr(1, 0).orR
-  val csrOpnd = Mux(cur.zicsr(2), cur.imm, cur.src1)
+  val csrFunc = cur.aluFunc.csrFunc
+  val csrOpnd = Mux(csrFunc.opnd, cur.imm, cur.src1)
   out.bits.csrAddr := cur.csrAddr
-  out.bits.csrData := MuxLookup1H(cur.zicsr(1, 0))(Seq(
-    "b01".U(2.W) -> csrOpnd,
-    "b10".U(2.W) -> (cur.csrSrc | csrOpnd),
-    "b11".U(2.W) -> (cur.csrSrc & ~csrOpnd),
+  out.bits.csrData := Mux1H(Seq(
+    csrFunc.rw -> csrOpnd,
+    csrFunc.rs -> (cur.csrSrc | csrOpnd),
+    csrFunc.rc -> (cur.csrSrc & ~csrOpnd),
   ))
-  out.bits.csrWen := zicsr && (out.bits.csrData === cur.csrSrc)
+  out.bits.csrWen := cur.zicsr && cur.csrWen && !cur.trap
 
   setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
 
@@ -101,15 +102,15 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.rdVal := Mux1H(Seq(
     (cur.mul && mulFuncMul) -> mulVal,
     (cur.mul && !mulFuncMul) -> divVal,
-    zicsr -> cur.csrSrc,
-    (!cur.mul && !zicsr) -> aluRes,
+    cur.zicsr -> cur.csrSrc,
+    (!cur.mul && !cur.zicsr) -> aluRes,
   ))
-  out.bits.fwReady := cur.fwReady || cur.mul || zicsr
-  out.bits.mem := cur.mem
+  out.bits.fwReady := cur.fwReady || cur.mul || cur.zicsr
+  out.bits.mem := Mux(cur.trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc
-  out.bits.ret := cur.ret
-  out.bits.fenceI := cur.fenceI
-  out.bits.fenceVMA := cur.fenceVMA
+  out.bits.ret := Mux(cur.trap, 0.U(2.W), cur.ret)
+  out.bits.fenceI := cur.fenceI && !cur.trap
+  out.bits.fenceVMA := cur.fenceVMA && !cur.trap
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap
   out.bits.cause := cur.cause

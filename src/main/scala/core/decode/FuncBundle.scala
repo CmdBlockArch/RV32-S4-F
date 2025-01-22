@@ -97,4 +97,18 @@ class FuncBundle extends Bundle {
     f.remu := and
     f
   }
+
+  def csrFunc = {
+    val f = Wire(new Bundle {
+      val opnd = Bool()
+      val rw = Bool()
+      val rs = Bool()
+      val rc = Bool()
+    })
+    f.opnd := shr || or || and
+    f.rw := shl || shr
+    f.rs := lts || or
+    f.rc := ltu || and
+    f
+  }
 }
