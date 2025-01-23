@@ -3,6 +3,7 @@ package core.fetch
 import chisel3._
 import chisel3.util._
 import core.misc.MemReadIO
+import core.cache.CacheWayFactory
 
 class FetchOut extends Bundle {
   val pc = UInt(32.W)
@@ -13,7 +14,8 @@ class FetchOut extends Bundle {
 }
 
 class Fetch extends Module {
-  import core.fetch.InstCacheUtils._
+  val icacheFactory = new CacheWayFactory()
+  import icacheFactory._
 
   val out = IO(Decoupled(new FetchOut))
   val memReadIO = IO(new MemReadIO)
@@ -23,8 +25,8 @@ class Fetch extends Module {
     val dnpc = Input(UInt(32.W))
   })
 
-  val iCache = Module(new InstCacheWay)
-  iCache.io.flush := io.fenceI
+  val icache = Module(new icacheFactory.CacheWay)
+  icache.io.flush := io.fenceI
 
   val pc = RegInit(0x80000000L.U(32.W))
   val valid = RegInit(false.B)
@@ -46,15 +48,15 @@ class Fetch extends Module {
   } .elsewhen (ready) {
     pc := pc + 4.U
   }
-  iCache.readIO.index := getIndex(pc)
+  icache.readIO.index := getIndex(pc)
 
   // ---------- Fetch ----------
   when (ready && !req) {
     valid := !io.flush
     cachePc := pc
-    cacheValid := iCache.readIO.valid
-    cacheTag := iCache.readIO.tag
-    cacheData := iCache.readIO.data
+    cacheValid := icache.readIO.valid
+    cacheTag := icache.readIO.tag
+    cacheData := icache.readIO.data
     writeValid := false.B
   }
   val pcTag = getTag(cachePc)
@@ -102,10 +104,10 @@ class Fetch extends Module {
       writeError := memReadIO.err
     }
   }
-  iCache.writeIO.en := valid && writeValid && !writeError
-  iCache.writeIO.index := pcIndex
-  iCache.writeIO.tag := pcTag
-  iCache.writeIO.data := writeData
+  icache.writeIO.en := valid && writeValid && !writeError
+  icache.writeIO.index := pcIndex
+  icache.writeIO.tag := pcTag
+  icache.writeIO.data := writeData
 
   // ---------- Flush ----------
   when (io.flush) {

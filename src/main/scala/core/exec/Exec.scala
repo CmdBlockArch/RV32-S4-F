@@ -10,13 +10,13 @@ class ExecOut extends Bundle {
   val rd = Output(UInt(5.W))
   val rdVal = Output(UInt(32.W))
   val fwReady = Output(Bool())
+  val data = Output(UInt(32.W)) // memData or csrData
   // MEM
   val mem = Output(UInt(4.W))
   val amoFunc = Output(UInt(4.W))
   // CSR
   val csrWen = Output(Bool())
   val csrAddr = Output(UInt(12.W))
-  val csrData = Output(UInt(32.W))
   // SYS
   val ret = Output(UInt(2.W))
   val fenceI = Output(Bool())
@@ -89,12 +89,14 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val csrFunc = cur.aluFunc.csrFunc
   val csrOpnd = Mux(csrFunc.opnd, cur.imm, cur.src1)
   out.bits.csrAddr := cur.csrAddr
-  out.bits.csrData := Mux1H(Seq(
+  val csrData = Mux1H(Seq(
     csrFunc.rw -> csrOpnd,
     csrFunc.rs -> (cur.csrSrc | csrOpnd),
     csrFunc.rc -> (cur.csrSrc & ~csrOpnd),
   ))
-  out.bits.csrWen := cur.zicsr && cur.csrWen && !cur.trap
+  val csrWen = cur.zicsr && cur.csrWen && !cur.trap
+  out.bits.csrWen := csrWen
+  out.bits.data := Mux(csrWen, csrData, cur.src2)
 
   setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
 
