@@ -10,6 +10,7 @@ import DataCache.{dcacheFactory => dc}
 
 class MemPreOut extends ExecOut {
   val dcacheValid = Output(Bool())
+  val dcacheDirty = Output(Bool())
   val dcacheTag = Output(UInt(dc.tagW.W))
   val dcacheData = Output(dc.dataType)
 }
@@ -21,10 +22,12 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   gprFwIO.rd := cur.rd
   gprFwIO.ready := cur.fwReady
   gprFwIO.fwVal := cur.rdVal
+
   // dcache读
   val dcacheReadIO = IO(new dc.readIO)
   dcacheReadIO.index := dc.getIndex(cur.rdVal)
   out.bits.dcacheValid := dcacheReadIO.valid
+  out.bits.dcacheDirty := dcacheReadIO.dirty
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
 

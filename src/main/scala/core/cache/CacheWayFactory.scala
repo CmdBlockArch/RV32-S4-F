@@ -20,6 +20,7 @@ class CacheWayFactory(val offsetW: Int = 5, val indexW: Int = 3) {
   class readIO extends Bundle {
     val index = Output(UInt(indexW.W))
     val valid = Input(Bool())
+    val dirty = Input(Bool())
     val tag = Input(UInt(tagW.W))
     val data = Input(dataType)
   }
@@ -27,18 +28,21 @@ class CacheWayFactory(val offsetW: Int = 5, val indexW: Int = 3) {
   class writeIO extends Bundle {
     val en = Output(Bool())
     val index = Output(UInt(indexW.W))
+    val dirty = Output(Bool())
     val tag = Output(UInt(tagW.W))
     val data = Output(dataType)
   }
 
   class CacheWay extends Module {
     val valid = RegInit(VecInit(Seq.fill(setN)(false.B)))
+    val dirty = Reg(Vec(setN, Bool()))
     val tag = Module(new SRam(indexW, tagW))
     val data = Module(new SRam(indexW, blockW))
 
     // 读端口
     val readIO = IO(Flipped(new readIO))
     readIO.valid := valid(readIO.index)
+    readIO.dirty := dirty(readIO.index)
     tag.readIO.addr := readIO.index
     readIO.tag := tag.readIO.data
     data.readIO.addr := readIO.index
@@ -48,6 +52,7 @@ class CacheWayFactory(val offsetW: Int = 5, val indexW: Int = 3) {
     val writeIO = IO(Flipped(new writeIO))
     when (writeIO.en) {
       valid(writeIO.index) := true.B
+      dirty(writeIO.index) := writeIO.dirty
     }
     tag.writeIO.en := writeIO.en
     tag.writeIO.addr := writeIO.index

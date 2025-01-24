@@ -14,6 +14,16 @@ class MemReadIO extends Bundle {
   val data = Input(UInt(32.W))
   val err = Input(Bool())
   val last = Input(Bool())
+
+  def setBurst(n: Int = 1) = {
+    size := "b10".U // 4 bytes
+    if (n == 1) {
+      burst := "b00".U // single
+    } else {
+      burst := "b10".U // wrap
+    }
+    len := (n - 1).U
+  }
 }
 
 class MemReadArb(nrMaster: Int) extends Module {

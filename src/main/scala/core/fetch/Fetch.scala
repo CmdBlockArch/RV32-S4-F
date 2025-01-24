@@ -21,8 +21,9 @@ class Fetch extends Module {
   val memReadIO = IO(new MemReadIO)
   val io = IO(new Bundle {
     val flush = Input(Bool())
-    val fenceI = Input(Bool())
     val dnpc = Input(UInt(32.W))
+
+    val fenceI = Input(Bool())
   })
 
   val icache = Module(new icacheFactory.CacheWay)
@@ -88,9 +89,7 @@ class Fetch extends Module {
   val burstOffset = Reg(UInt((offsetW - 2).W))
   memReadIO.req := req
   memReadIO.addr := cachePc
-  memReadIO.size := "b10".U // 4 bytes
-  memReadIO.burst := "b10".U // wrap burst
-  memReadIO.len := (blockN - 1).U
+  memReadIO.setBurst(blockN)
   when (!req && valid && !hit && !io.flush) {
     req := true.B
     burstOffset := 0.U
@@ -105,6 +104,7 @@ class Fetch extends Module {
     }
   }
   icache.writeIO.en := valid && writeValid && !writeError
+  icache.writeIO.dirty := DontCare
   icache.writeIO.index := pcIndex
   icache.writeIO.tag := pcTag
   icache.writeIO.data := writeData

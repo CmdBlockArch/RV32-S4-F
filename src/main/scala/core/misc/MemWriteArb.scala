@@ -59,11 +59,10 @@ class MemWriteArb(nrMaster: Int) extends Module {
 
   for (i <- 0 until nrMaster) {
     // 转发b通道返回给每个master
-    val sel = WireDefault(curId === i.U)
-    master(i).resp := sel && slave.bvalid
+    master(i).resp := slave.bvalid && slave.bid === i.U
     master(i).err := slave.bresp.orR
 
-    master(i).dataReady := slave.wready
+    master(i).dataReady := slave.wready && curId === i.U
   }
 
   // 数据通道
