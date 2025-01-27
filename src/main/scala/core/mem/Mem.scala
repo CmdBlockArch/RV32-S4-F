@@ -69,7 +69,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val idle = !(evictReq || readReq || reqFin)
   val burstOffset = Reg(UInt((dc.offsetW - 2).W))
   when (idle) {
-    when (valid && mem && !hit && !cur.trap) {
+    when (valid && mem && !hit) { // valid && mem && !hit && !cur.trap
       when (cur.dcacheDirty) {
         evictReq := true.B
       } .otherwise {
@@ -102,25 +102,20 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   memReadIO.setBurst(dc.blockN)
 
   // load/store结果
-  val hitData = Wire(dc.dataType)
-  when (genHit) {
-    hitData := genData
-  } .elsewhen (dcacheHit) {
-    hitData := cur.dcacheData
-  } .otherwise {
-    hitData := DontCare
-  }
+  val hitData = Mux(genHit, genData, cur.dcacheData)
   val data = Mux(reqFin, genData(offset), hitData(offset))
-  val loadVal = Mem.getLoadVal(cur.mem, data)
-  val storeVal = Mem.getStoreVal(cur.mem, data, cur.data)
+  val loadVal = Mem.getLoadVal(cur.mem, addr, data)
+  val storeVal = Mem.getStoreVal(cur.mem, addr, data, cur.data)
 
   // dcache写入
+  when (valid && store && dcacheHit && !genHit) {
+    genData := cur.dcacheData
+  }
   when ((valid && store && hit) || reqFin) {
     genValid := true.B
     genDirty := !reqFin
     genTag := tag
     genIndex := index
-    when (!reqFin) { genData := hitData }
     when (store) {
       genData(offset) := storeVal
     }
@@ -148,9 +143,24 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap
   out.bits.cause := cur.cause
+
+  // TODO: LR SC AMO
 }
 
 object Mem {
-  def getStoreVal(mem: UInt, old: UInt, data: UInt): UInt = 0.U
-  def getLoadVal(mem: UInt, old: UInt): UInt = 0.U
+  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val wstrb = Wire(UInt(32.W))
+    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), 1.U(8.W)) << offset
+    val wdata = Wire(UInt(32.W)); wdata := data << offset
+    (old & ~wstrb) | (wdata & wstrb)
+  }
+  def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val rdata = Wire(UInt(32.W)); rdata := old >> offset
+    Mux(mem(1), rdata, Mux(mem(0),
+      Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
+      Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
+    ))
+  }
 }

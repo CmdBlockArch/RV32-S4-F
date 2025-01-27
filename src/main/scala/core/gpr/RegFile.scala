@@ -12,6 +12,7 @@ class GprReadIO extends Bundle {
 }
 
 class GprWriteIO extends Bundle {
+  val en = Output(Bool())
   val rd = Output(UInt(5.W))
   val data = Output(UInt(32.W))
 }
@@ -62,7 +63,7 @@ class RegFile extends Module {
   readIO.src2Ready := res2._1
   readIO.src2 := res2._2
 
-  when(writeIO.rd =/= 0.U) {
+  when(writeIO.en && writeIO.rd =/= 0.U) {
     regs(writeIO.rd) := writeIO.data
   }
 }
