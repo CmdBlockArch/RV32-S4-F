@@ -1,6 +1,7 @@
 package perip
 
 import chisel3._
+import chisel3.util._
 import chisel3.util.circt.dpi.{DPINonVoidFunctionImport, DPIClockedVoidFunctionImport}
 import utils.MuxLookup1H
 
@@ -132,8 +133,8 @@ class SimMemWrite extends Module {
   val addrNext = WireDefault(UInt(32.W), BurstAddrNext(cur.awaddr, cur.awlen, cur.awsize, cur.awburst))
   // 收到写入的数据
   when (io.wready && io.wvalid) {
-    PmemWrite.call(cur.awaddr, io.wdata, io.wstrb)
-    when (io.wlast) { // burst请求完成
+    PmemWrite.call(cur.awaddr, io.wdata, Cat(0.U(4.W), io.wstrb))
+    when (io.wlast) { // burst请求完成s
       curResp := true.B
     } .otherwise {
       cur.awaddr := addrNext

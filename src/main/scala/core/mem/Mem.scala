@@ -23,6 +23,8 @@ class MemOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+
+  def wbFlush = csrWen || ret.orR || fenceI || fenceVMA || trap
 }
 
 class Mem extends PiplineModule(new MemPreOut, new MemOut) {

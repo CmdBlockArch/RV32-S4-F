@@ -9,10 +9,14 @@ import core.csr._
 class WriteBack extends Module {
   val in = IO(Flipped(Decoupled(new MemOut)))
   in.ready := true.B
+  val valid = RegNext(in.valid, false.B)
+  val flush = RegInit(false.B)
+  val inValid = in.valid && !flush
+  flush := inValid && in.bits.wbFlush
 
   // 寄存器写
   val gprWriteIO = IO(new GprWriteIO)
-  gprWriteIO.en := in.valid
+  gprWriteIO.en := inValid
   gprWriteIO.rd := in.bits.rd
   gprWriteIO.data := in.bits.rdVal
 
@@ -31,34 +35,39 @@ class WriteBack extends Module {
 
   // CSR写
   val csrWritePort = new CsrWritePort(csrRegFile)
-  when (in.valid && in.bits.csrWen) {
+  when (inValid && in.bits.csrWen) {
     csrWritePort(in.bits.csrAddr, in.bits.csrData)
   }
 
-  // ret
-  val ret = in.bits.ret.orR
-  val mret = in.bits.ret === "b11".U(2.W)
-  val sret = in.bits.ret === "b10".U(2.W)
+  // ------------------------------
+  // SYS
+  val ret = RegNext(in.bits.ret)
+  val fenceI = RegNext(in.bits.fenceI)
+  val fenceVMA = RegNext(in.bits.fenceVMA)
+  // 异常
+  val pc = RegNext(in.bits.pc)
+  val trap = RegNext(in.bits.trap)
+  val cause = RegNext(in.bits.cause)
 
-  // trap
-  val trap = in.bits.trap
+  val retEn = ret.orR
+  val mret = ret === "b11".U(2.W)
+  val sret = ret === "b10".U(2.W)
   val trapAddr = csrRegFile.mtval // TODO: mtval or stval
 
   // fence & flush
-  val flush = in.bits.csrWen || ret || trap || in.bits.fenceI || in.bits.fenceVMA
   val io = IO(new Bundle {
     val flush = Output(Bool())
     val dnpc = Output(UInt(32.W))
     val fenceI = Output(Bool())
     val fenceVMA = Output(Bool())
   })
-  io.flush := in.valid && flush
+  io.flush := flush
   io.dnpc := Mux1H(Seq(
     mret -> csrRegFile.mepc,
     sret -> csrRegFile.sepc,
     trap -> trapAddr,
-    (!ret && !trap) -> (in.bits.pc + 4.U)
+    (!retEn && !trap) -> (pc + 4.U)
   ))
-  io.fenceI := in.valid && in.bits.fenceI
-  io.fenceVMA := in.valid && in.bits.fenceVMA
+  io.fenceI := valid && fenceI
+  io.fenceVMA := valid && fenceVMA
 }

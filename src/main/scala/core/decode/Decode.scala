@@ -106,7 +106,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val csrAddr = inst(31, 20)
   out.bits.csrAddr := csrAddr
   val csrReadIO = IO(new CsrReadIO)
-  csrReadIO.data := csrAddr
+  csrReadIO.addr := csrAddr
   out.bits.csrSrc := csrReadIO.data
   val csrWriteRO = csrAddr(11, 10).andR && csrWen
   val csrErr = zicsr && (csrWriteRO || csrReadIO.err)

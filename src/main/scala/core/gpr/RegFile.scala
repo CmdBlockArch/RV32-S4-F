@@ -30,7 +30,7 @@ class RegFile extends Module {
 
   val fwVec = IO(Flipped(Vec(3, new GprFwIO))) // id小的流水级优先级高，位于上游
 
-  val regs = Reg(Vec(32, UInt(32.W))) // 0号寄存器会被自动优化
+  val regs = Reg(Vec(32, UInt(32.W)))
 
   def readGpr(rs: UInt): (Bool, UInt) = {
     val ready = Wire(Bool())
@@ -63,7 +63,7 @@ class RegFile extends Module {
   readIO.src2Ready := res2._1
   readIO.src2 := res2._2
 
-  when(writeIO.en && writeIO.rd =/= 0.U) {
+  when(writeIO.en && writeIO.rd.orR) {
     regs(writeIO.rd) := writeIO.data
   }
 }
