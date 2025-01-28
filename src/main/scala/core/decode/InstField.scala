@@ -203,6 +203,20 @@ object FenceVMAField extends BoolDecodeField[InstPattern] {
   }
 }
 
+object EcallField extends BoolDecodeField[InstPattern] {
+  override def name = "ecall" // 是否为ECALL操作
+  override def genTable(op: InstPattern): BitPat = {
+    if (InstPattern.ecall.bitPat.cover(op.inst)) y else n
+  }
+}
+
+object EbreakField extends BoolDecodeField[InstPattern] {
+  override def name = "ebreak" // 是否为EBREAK操作
+  override def genTable(op: InstPattern): BitPat = {
+    if (InstPattern.ebreak.bitPat.cover(op.inst)) y else n
+  }
+}
+
 object InvInstField extends BoolDecodeField[InstPattern] {
   override def name = "invInst" // 是否为非法指令
   override def default = y
@@ -215,6 +229,6 @@ object InstField {
   val fields = Seq(
     ImmSelField, ValASelField, ValBSelField, AluFuncEnField, AluSignEnField,
     RdEnField, FwReadyField, JmpField, MulField, MemField, ZicsrEnField,
-    RetField, FenceIField, FenceVMAField, InvInstField
+    RetField, FenceIField, FenceVMAField, EcallField, EbreakField, InvInstField
   )
 }

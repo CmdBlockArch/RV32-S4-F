@@ -14,7 +14,7 @@ import core.misc.{MemReadArb, MemWriteArb}
 
 import perip.{SimMemRead, SimMemWrite}
 
-class Core extends Module {
+class Top extends Module {
   val gpr = Module(new RegFile)
   val dcache = Module(new DataCache.dcacheFactory.CacheWay)
   val memReadArb = Module(new MemReadArb(2))
@@ -34,25 +34,25 @@ class Core extends Module {
   memReadArb.master(0) :<>= fetch.memReadIO
 
   // decode
-  decode.flush := wb.io.flush
+  decode.flush := exec.io.jmp || wb.io.flush
   gpr.readIO :<>= decode.gprReadIO
   wb.csrReadIO :<>= decode.csrReadIO
 
   // exec
-  exec.flush := wb.io.flush
-  gpr.fwVec(0) :<>= exec.gprFwIO
+  exec.flush := exec.io.jmp || wb.io.flush
+  gpr.fwIO(0) :<>= exec.gprFwIO
 
   // memPre
   memPre.flush := wb.io.flush
   dcache.readIO :<>= memPre.dcacheReadIO
-  gpr.fwVec(1) :<>= memPre.gprFwIO
+  gpr.fwIO(1) :<>= memPre.gprFwIO
 
   // mem
   mem.flush := wb.io.flush
   dcache.writeIO :<>= mem.dcacheWriteIO
   memReadArb.master(1) :<>= mem.memReadIO
   memWriteArb.master(0) :<>= mem.memWriteIO
-  gpr.fwVec(2) :<>= mem.gprFwIO
+  gpr.fwIO(2) :<>= mem.gprFwIO
 
   // wb
   gpr.writeIO :<>= wb.gprWriteIO
@@ -63,4 +63,16 @@ class Core extends Module {
   val simMemWrite = Module(new SimMemWrite)
   simMemRead.io :<>= memReadArb.slave
   simMemWrite.io :<>= memWriteArb.slave
+
+  // debug
+  val debugIO = IO(new Bundle {
+    val commit = Output(Bool())
+    val pc = Output(UInt(32.W))
+    val ebreak = Output(Bool())
+    val gpr = Output(Vec(32, UInt(32.W)))
+  })
+  debugIO.commit := wb.debugOut.commit
+  debugIO.pc := wb.debugOut.pc
+  debugIO.ebreak := wb.debugOut.ebreak
+  debugIO.gpr := gpr.debugOut
 }

@@ -1,4 +1,4 @@
-import core.Core
+import core.Top
 
 object Elaborate extends App {
   val firtoolOptions = Array("--lowering-options=" + List(
@@ -8,5 +8,5 @@ object Elaborate extends App {
 //    "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).mkString(","))
-  circt.stage.ChiselStage.emitSystemVerilogFile(new Core, args, firtoolOptions)
+  circt.stage.ChiselStage.emitSystemVerilogFile(new Top, args, firtoolOptions)
 }

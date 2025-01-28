@@ -28,7 +28,7 @@ class RegFile extends Module {
   val readIO = IO(Flipped(new GprReadIO))
   val writeIO = IO(Flipped(new GprWriteIO))
 
-  val fwVec = IO(Flipped(Vec(3, new GprFwIO))) // id小的流水级优先级高，位于上游
+  val fwIO = IO(Flipped(Vec(3, new GprFwIO))) // id小的流水级优先级高，位于上游
 
   val regs = Reg(Vec(32, UInt(32.W)))
 
@@ -41,7 +41,7 @@ class RegFile extends Module {
       src := 0.U(32.W)
     }
 
-    fwVec.foreach(fwIO => {
+    fwIO.foreach(fwIO => {
       ctx = ctx.elsewhen (fwIO.valid && fwIO.rd === rs) {
         ready := fwIO.ready
         src := fwIO.fwVal
@@ -66,4 +66,7 @@ class RegFile extends Module {
   when(writeIO.en && writeIO.rd.orR) {
     regs(writeIO.rd) := writeIO.data
   }
+
+  val debugOut = IO(Output(Vec(32, UInt(32.W))))
+  debugOut := regs
 }

@@ -9,9 +9,10 @@ import core.csr._
 class WriteBack extends Module {
   val in = IO(Flipped(Decoupled(new MemOut)))
   in.ready := true.B
-  val valid = RegNext(in.valid, false.B)
+
   val flush = RegInit(false.B)
   val inValid = in.valid && !flush
+  val valid = RegNext(inValid, false.B)
   flush := inValid && in.bits.wbFlush
 
   // 寄存器写
@@ -70,4 +71,14 @@ class WriteBack extends Module {
   ))
   io.fenceI := valid && fenceI
   io.fenceVMA := valid && fenceVMA
+
+  // debug
+  val debugOut = IO(new Bundle {
+    val commit = Output(Bool())
+    val pc = Output(UInt(32.W))
+    val ebreak = Output(Bool())
+  })
+  debugOut.commit := valid
+  debugOut.pc := pc
+  debugOut.ebreak := valid && trap && cause === 3.U
 }

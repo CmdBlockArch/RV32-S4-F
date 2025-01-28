@@ -115,10 +115,16 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.ret := cs(RetField)
   out.bits.fenceI := cs(FenceIField)
   out.bits.fenceVMA := cs(FenceVMAField)
+  val ecall = cs(EcallField)
+  val ebreak = cs(EbreakField)
 
   // trap
   val invInst = cs(InvInstField) || csrErr
   out.bits.pc := cur.pc
-  out.bits.trap := cur.trap || invInst
-  out.bits.cause := Mux(cur.trap, cur.cause, 2.U) // 2: illegal instruction
+  out.bits.trap := cur.trap || invInst || ecall || ebreak
+  out.bits.cause := Mux1H(Seq(
+    invInst -> 2.U,
+    ecall -> 11.U, // TODO: ecall cause
+    ebreak -> 3.U,
+  ))
 }

@@ -34,22 +34,26 @@ class CacheWayFactory(val offsetW: Int = 5, val indexW: Int = 3) {
   }
 
   class CacheWay extends Module {
+    val readIO = IO(Flipped(new readIO))
+    val writeIO = IO(Flipped(new writeIO))
+
     val valid = RegInit(VecInit(Seq.fill(setN)(false.B)))
     val dirty = Reg(Vec(setN, Bool()))
     val tag = Module(new SRam(indexW, tagW))
     val data = Module(new SRam(indexW, blockW))
 
     // 读端口
-    val readIO = IO(Flipped(new readIO))
-    readIO.valid := valid(readIO.index)
-    readIO.dirty := dirty(readIO.index)
+    val forward = WireDefault(writeIO.en && readIO.index === writeIO.index)
+    readIO.valid := Mux(forward, true.B, valid(readIO.index))
+    readIO.dirty := Mux(forward, writeIO.dirty, dirty(readIO.index))
+
     tag.readIO.addr := readIO.index
     readIO.tag := tag.readIO.data
+
     data.readIO.addr := readIO.index
     readIO.data := data.readIO.data.asTypeOf(dataType)
 
     // 写端口
-    val writeIO = IO(Flipped(new writeIO))
     when (writeIO.en) {
       valid(writeIO.index) := true.B
       dirty(writeIO.index) := writeIO.dirty
