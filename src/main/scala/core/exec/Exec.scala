@@ -5,6 +5,7 @@ import chisel3.util._
 import core.decode.DecodeOut
 import core.gpr.GprFwIO
 import utils.PiplineModule
+import utils.Config._
 
 class ExecOut extends Bundle {
   val rd = Output(UInt(5.W))
@@ -25,6 +26,9 @@ class ExecOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  // 调试
+  val inst = if (debug) Some(Output(UInt(32.W))) else None
+  val dnpc = if (debug) Some(Output(UInt(32.W))) else None
 }
 
 class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
@@ -116,4 +120,9 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap
   out.bits.cause := cur.cause
+
+  if (debug) {
+    out.bits.inst.get := cur.inst.get
+    out.bits.dnpc.get := Mux(io.jmp, io.dnpc, cur.pc + 4.U)
+  }
 }

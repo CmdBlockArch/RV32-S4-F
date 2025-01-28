@@ -5,6 +5,7 @@ import chisel3.experimental.dataview._
 import utils.PiplineModule
 import core.exec.ExecOut
 import core.gpr.GprFwIO
+import utils.Config._
 
 import DataCache.{dcacheFactory => dc}
 
@@ -32,4 +33,9 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.dcacheData := dcacheReadIO.data
 
   out.bits.viewAsSupertype(new ExecOut) := cur
+
+  if (debug) {
+    out.bits.inst.get := cur.inst.get
+    out.bits.dnpc.get := cur.dnpc.get
+  }
 }

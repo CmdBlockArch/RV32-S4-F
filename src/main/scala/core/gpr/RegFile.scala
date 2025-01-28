@@ -1,6 +1,7 @@
 package core.gpr
 
 import chisel3._
+import utils.Config._
 
 class GprReadIO extends Bundle {
   val rs1 = Output(UInt(5.W))
@@ -67,6 +68,8 @@ class RegFile extends Module {
     regs(writeIO.rd) := writeIO.data
   }
 
-  val debugOut = IO(Output(Vec(32, UInt(32.W))))
-  debugOut := regs
+  val debugOut = if (debug) Some(IO(Output(Vec(32, UInt(32.W))))) else None
+  if (debug) {
+    debugOut.get := regs
+  }
 }

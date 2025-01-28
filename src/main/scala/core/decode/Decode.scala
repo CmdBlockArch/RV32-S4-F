@@ -7,6 +7,7 @@ import core.csr.CsrReadIO
 import utils.PiplineModule
 import core.fetch.FetchOut
 import core.gpr.GprReadIO
+import utils.Config._
 
 class DecodeOut extends Bundle {
   // 运算数
@@ -41,6 +42,8 @@ class DecodeOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  // 调试
+  val inst = if (debug) Some(Output(UInt(32.W))) else None
 }
 
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
@@ -127,4 +130,8 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
     ecall -> 11.U, // TODO: ecall cause
     ebreak -> 3.U,
   ))
+
+  if (debug) {
+    out.bits.inst.get := inst
+  }
 }

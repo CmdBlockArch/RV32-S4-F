@@ -1,13 +1,15 @@
 package core
 
 import chisel3._
-import chisel3.util._
+import chisel3.experimental.dataview._
+
+import utils.Config._
 
 import core.fetch.Fetch
 import core.decode.Decode
 import core.exec.Exec
 import core.mem.{MemPre, Mem, DataCache}
-import core.wb.WriteBack
+import core.wb.{WriteBack, WbDebugOut}
 
 import core.gpr.RegFile
 import core.misc.{MemReadArb, MemWriteArb}
@@ -65,14 +67,13 @@ class Top extends Module {
   simMemWrite.io :<>= memWriteArb.slave
 
   // debug
-  val debugIO = IO(new Bundle {
-    val commit = Output(Bool())
-    val pc = Output(UInt(32.W))
-    val ebreak = Output(Bool())
-    val gpr = Output(Vec(32, UInt(32.W)))
-  })
-  debugIO.commit := wb.debugOut.commit
-  debugIO.pc := wb.debugOut.pc
-  debugIO.ebreak := wb.debugOut.ebreak
-  debugIO.gpr := gpr.debugOut
+  val debugIO = if (debug) {
+    Some(IO(new WbDebugOut {
+      val gpr = Output(Vec(32, UInt(32.W)))
+    }))
+  } else None
+  if (debug) {
+    debugIO.get.viewAsSupertype(new WbDebugOut) := wb.debugOut.get
+    debugIO.get.gpr := gpr.debugOut.get
+  }
 }

@@ -5,6 +5,7 @@ import chisel3.util._
 import utils.PiplineModule
 import core.gpr.GprFwIO
 import core.misc.{MemReadIO, MemWriteIO, MemBurstWriteHelper}
+import utils.Config._
 
 import DataCache.{dcacheFactory => dc}
 
@@ -23,8 +24,29 @@ class MemOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  // 调试
+  val inst = if (debug) Some(Output(UInt(32.W))) else None
+  val dnpc = if (debug) Some(Output(UInt(32.W))) else None
 
   def wbFlush = csrWen || ret.orR || fenceI || fenceVMA || trap
+}
+
+object Mem {
+  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val wstrb = Wire(UInt(32.W))
+    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), 1.U(8.W)) << offset
+    val wdata = Wire(UInt(32.W)); wdata := data << offset
+    (old & ~wstrb) | (wdata & wstrb)
+  }
+  def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val rdata = Wire(UInt(32.W)); rdata := old >> offset
+    Mux(mem(1), rdata, Mux(mem(0),
+      Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
+      Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
+    ))
+  }
 }
 
 class Mem extends PiplineModule(new MemPreOut, new MemOut) {
@@ -147,22 +169,9 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   out.bits.cause := cur.cause
 
   // TODO: LR SC AMO
-}
 
-object Mem {
-  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
-    val offset = Cat(addr(1, 0), 0.U(3.W))
-    val wstrb = Wire(UInt(32.W))
-    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), 1.U(8.W)) << offset
-    val wdata = Wire(UInt(32.W)); wdata := data << offset
-    (old & ~wstrb) | (wdata & wstrb)
-  }
-  def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
-    val offset = Cat(addr(1, 0), 0.U(3.W))
-    val rdata = Wire(UInt(32.W)); rdata := old >> offset
-    Mux(mem(1), rdata, Mux(mem(0),
-      Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
-      Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
-    ))
+  if (debug) {
+    out.bits.inst.get := cur.inst.get
+    out.bits.dnpc.get := cur.dnpc.get
   }
 }

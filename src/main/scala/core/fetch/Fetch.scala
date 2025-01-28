@@ -88,7 +88,7 @@ class Fetch extends Module {
   // ---------- Write ----------
   val burstOffset = Reg(UInt((offsetW - 2).W))
   memReadIO.req := req
-  memReadIO.addr := cachePc
+  memReadIO.addr := Cat(getTag(cachePc), getIndex(cachePc), 0.U(offsetW.W))
   memReadIO.setBurst(blockN)
   when (!req && valid && !hit && !io.flush) {
     req := true.B
