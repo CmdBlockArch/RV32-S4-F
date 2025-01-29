@@ -52,13 +52,18 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   gprFwIO.fwVal := aluRes
 
   // 分支和跳转
-  val brJmp = alu.io.jmp
+  val bru = Module(new Branch)
+  bru.io.src1 := cur.src1
+  bru.io.src2 := cur.src2
+  bru.io.func := cur.func
+  val brJmp = bru.io.jmp
   io.jmp := valid && (cur.jal || cur.jalr || (cur.branch && brJmp))
   io.dnpc := Mux(cur.jalr, cur.src1, cur.pc) + Mux(cur.branch && !brJmp, 4.U(32.W), cur.imm)
 
   // 乘除法
   val mulFunc = cur.aluFunc.mulFunc
-  val mulFuncMul = mulFunc.mul || mulFunc.mulh || mulFunc.mulhsu || mulFunc.mulhu
+  // val mulFuncMul = mulFunc.mul || mulFunc.mulh || mulFunc.mulhsu || mulFunc.mulhu
+  val mulFuncMul = !cur.func(2)
 
   val mul = Module(new Mul)
   mul.in.valid := valid && !cur.trap && cur.mul && mulFuncMul
@@ -73,7 +78,8 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val div = Module(new Div)
   val divOf = cur.src1 === Cat(1.U(1.W), 0.U(31.W)) && cur.src2.andR
   val divZero = cur.src2 === 0.U(32.W)
-  val divSign = mulFunc.div || mulFunc.rem
+  // val divSign = mulFunc.div || mulFunc.rem
+  val divSign = !cur.func(0)
   div.in.valid := valid && !cur.trap && cur.mul && !divZero &&
     ((divSign && !divOf) || mulFunc.divu || mulFunc.remu)
   div.in.sign := divSign
@@ -91,7 +97,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
 
   // CSR
   val csrFunc = cur.aluFunc.csrFunc
-  val csrOpnd = Mux(csrFunc.opnd, cur.imm, cur.src1)
+  val csrOpnd = Mux(cur.func(2), cur.imm, cur.src1)
   out.bits.csrAddr := cur.csrAddr
   val csrData = Mux1H(Seq(
     csrFunc.rw -> csrOpnd,

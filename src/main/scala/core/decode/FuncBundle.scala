@@ -58,24 +58,6 @@ class FuncBundle extends Bundle {
   val or  = Bool()
   val and = Bool()
 
-  def brFunc = {
-    val f = Wire(new Bundle {
-      val eq = Bool()
-      val ne = Bool()
-      val lt = Bool()
-      val ge = Bool()
-      val ltu = Bool()
-      val geu = Bool()
-    })
-    f.eq := add
-    f.ne := shl
-    f.lt := xor
-    f.ge := shr
-    f.ltu := or
-    f.geu := and
-    f
-  }
-
   def mulFunc = {
     val f = Wire(new Bundle {
       val mul = Bool()
@@ -100,12 +82,10 @@ class FuncBundle extends Bundle {
 
   def csrFunc = {
     val f = Wire(new Bundle {
-      val opnd = Bool()
       val rw = Bool()
       val rs = Bool()
       val rc = Bool()
     })
-    f.opnd := shr || or || and
     f.rw := shl || shr
     f.rs := lts || or
     f.rc := ltu || and

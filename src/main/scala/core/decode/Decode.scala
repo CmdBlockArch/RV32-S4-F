@@ -14,6 +14,7 @@ class DecodeOut extends Bundle {
   val src1 = Output(UInt(32.W))
   val src2 = Output(UInt(32.W))
   val imm = Output(UInt(32.W))
+  val func = Output(UInt(3.W))
   // ALU选数/功能
   val valASel = Output(UInt(3.W))
   val valBSel = Output(UInt(3.W))
@@ -54,6 +55,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val rs1 = cur.inst(19, 15)
   val rs2 = cur.inst(24, 20)
   val rd = cur.inst(11, 7)
+  out.bits.func := func3
 
   // 从指令译码控制信号
   val decodeTable = new DecodeTable(InstPattern.patterns, InstField.fields)
