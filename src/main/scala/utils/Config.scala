@@ -1,5 +1,6 @@
 package utils
 
 object Config {
-  val debug = true
+  val debug = false
+  val synthesis = true
 }

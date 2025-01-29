@@ -2,6 +2,7 @@ package core.exec
 
 import chisel3._
 import chisel3.util._
+import utils.Config._
 
 class Div extends Module {
   val in = IO(new Bundle {
@@ -19,7 +20,7 @@ class Div extends Module {
   })
   val flush = IO(Input(Bool()))
 
-  class DIV_test extends BlackBox with HasBlackBoxResource {
+  class DivInternal extends BlackBox with HasBlackBoxResource {
     val io = IO(new Bundle {
       val clock = Input(Clock())
       val reset = Input(Reset())
@@ -36,10 +37,12 @@ class Div extends Module {
       val out_quot = Output(UInt(32.W))
       val out_rem = Output(UInt(32.W))
     })
-    addResource("/DIV_test.sv")
+    val module_name = if (debug) "DIV_test" else "DIV"
+    override def desiredName = module_name
+    addResource(s"/$module_name.sv")
   }
 
-  val div = Module(new DIV_test)
+  val div = Module(new DivInternal)
   div.io.clock := clock
   div.io.reset := reset
   div.io.flush := flush

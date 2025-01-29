@@ -2,6 +2,7 @@ package core.exec
 
 import chisel3._
 import chisel3.util._
+import utils.Config._
 
 class Mul extends Module {
   val in = IO(new Bundle {
@@ -18,7 +19,7 @@ class Mul extends Module {
   })
   val flush = IO(Input(Bool()))
 
-  class MUL_test extends BlackBox with HasBlackBoxResource {
+  class MulInternal extends BlackBox with HasBlackBoxResource {
     val io = IO(new Bundle {
       val clock = Input(Clock())
       val reset = Input(Reset())
@@ -34,10 +35,12 @@ class Mul extends Module {
       val out_valid = Output(Bool())
       val out_prod = Output(UInt(64.W))
     })
-    addResource("/MUL_test.sv")
+    val module_name = if (debug) "MUL_test" else "MUL_radix_4"
+    override def desiredName = module_name
+    addResource(s"/$module_name.sv")
   }
 
-  val mul = Module(new MUL_test)
+  val mul = Module(new MulInternal)
   mul.io.clock := clock
   mul.io.reset := reset
   mul.io.flush := flush

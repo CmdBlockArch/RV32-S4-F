@@ -14,7 +14,7 @@ import core.wb.{WriteBack, WbDebugOut}
 import core.gpr.RegFile
 import core.misc.{MemReadArb, MemWriteArb}
 
-import perip.{SimMemRead, SimMemWrite}
+import perip.{SimMemRead, SimMemWrite, AxiReadIO, AxiWriteIO}
 
 class Top extends Module {
   val gpr = Module(new RegFile)
@@ -60,11 +60,17 @@ class Top extends Module {
   gpr.writeIO :<>= wb.gprWriteIO
   dcache.io.flush := wb.io.fenceI || wb.io.fenceVMA
 
-  // simMem
-  val simMemRead = Module(new SimMemRead)
-  val simMemWrite = Module(new SimMemWrite)
-  simMemRead.io :<>= memReadArb.slave
-  simMemWrite.io :<>= memWriteArb.slave
+  if (synthesis) { // axi port
+    val axiReadIO = IO(new AxiReadIO)
+    val axiWriteIO = IO(new AxiWriteIO)
+    axiReadIO :<>= memReadArb.slave
+    axiWriteIO :<>= memWriteArb.slave
+  } else { // simMem
+    val simMemRead = Module(new SimMemRead)
+    val simMemWrite = Module(new SimMemWrite)
+    simMemRead.io :<>= memReadArb.slave
+    simMemWrite.io :<>= memWriteArb.slave
+  }
 
   // debug
   val debugIO = if (debug) {
