@@ -34,6 +34,8 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
 
   out.bits.viewAsSupertype(new ExecOut) := cur
 
+  // TODO: Dcache冲刷时写回
+
   if (debug) {
     out.bits.inst.get := cur.inst.get
     out.bits.dnpc.get := cur.dnpc.get

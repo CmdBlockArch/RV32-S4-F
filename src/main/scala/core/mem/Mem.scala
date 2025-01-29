@@ -35,7 +35,7 @@ object Mem {
   def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
     val offset = Cat(addr(1, 0), 0.U(3.W))
     val wstrb = Wire(UInt(32.W))
-    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), 1.U(8.W)) << offset
+    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), Fill(8, 1.U(1.W))) << offset
     val wdata = Wire(UInt(32.W)); wdata := data << offset
     (old & ~wstrb) | (wdata & wstrb)
   }
@@ -98,13 +98,16 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
         evictReq := true.B
       } .otherwise {
         readReq := true.B
+        genValid := false.B
         burstOffset := 0.U
       }
     }
   }
   when (memBwIO.resp) {
     evictReq := false.B
+
     readReq := true.B
+    genValid := false.B
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
@@ -137,7 +140,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   }
   when ((valid && store && hit) || reqFin) {
     genValid := true.B
-    genDirty := !reqFin
+    genDirty := store
     genTag := tag
     genIndex := index
     when (store) {

@@ -13,15 +13,15 @@ abstract class PiplineModule[TI <: Data, TO <: Data]
   val cur = Reg(inType)
 
   in.ready := !valid || out.fire
-  out.valid := valid
+  out.valid := valid && !flush
   when (in.fire) {
-    valid := !flush
+    valid := true.B
     cur := in.bits
   } .elsewhen (out.fire || flush) {
     valid := false.B
   }
 
   def setOutCond(cond: Bool) = {
-    out.valid := valid && cond
+    out.valid := valid && !flush && cond
   }
 }

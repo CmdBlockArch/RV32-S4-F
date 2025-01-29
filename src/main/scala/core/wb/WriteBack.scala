@@ -60,7 +60,7 @@ class WriteBack extends Module {
   val cause = RegNext(in.bits.cause)
 
   val inst = if (debug) Some(RegNext(in.bits.inst.get)) else None
-  val dnpc = if (debug) Some(RegNext(in.bits.dnpc.get)) else None
+  val dnpc = if (debug) Some(RegNext(in.bits.dnpc.get, 0x80000000L.U(32.W))) else None
 
   val retEn = ret.orR
   val mret = ret === "b11".U(2.W)

@@ -41,7 +41,7 @@ class Top extends Module {
   wb.csrReadIO :<>= decode.csrReadIO
 
   // exec
-  exec.flush := exec.io.jmp || wb.io.flush
+  exec.flush := wb.io.flush
   gpr.fwIO(0) :<>= exec.gprFwIO
 
   // memPre

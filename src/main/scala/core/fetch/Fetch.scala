@@ -29,19 +29,19 @@ class Fetch extends Module {
   val icache = Module(new icacheFactory.CacheWay)
   icache.io.flush := io.fenceI
 
-  val pc = RegInit(0x80000000L.U(32.W))
-  val valid = RegInit(false.B)
-  val ready = !valid || (out.ready && out.valid)
-
   val cachePc = Reg(UInt(32.W))
   val cacheValid = Reg(Bool())
   val cacheTag = Reg(UInt(tagW.W))
   val cacheData = Reg(dataType)
 
   val req = RegInit(false.B)
-  val writeValid = RegInit(false.B)
-  val writeData = Reg(dataType)
-  val writeError = Reg(Bool())
+  val genValid = RegInit(false.B)
+  val genData = Reg(dataType)
+  val genError = Reg(Bool())
+
+  val pc = RegInit(0x80000000L.U(32.W))
+  val valid = RegInit(false.B)
+  val ready = (!valid && !req) || (out.ready && out.valid)
 
   // ---------- Cache ----------
   when (io.flush) {
@@ -58,7 +58,7 @@ class Fetch extends Module {
     cacheValid := icache.readIO.valid
     cacheTag := icache.readIO.tag
     cacheData := icache.readIO.data
-    writeValid := false.B
+    genValid := false.B
   }
   val pcTag = getTag(cachePc)
   val pcIndex = getIndex(cachePc)
@@ -66,11 +66,11 @@ class Fetch extends Module {
   val pcLow = cachePc(1, 0)
   val pcMisaligned = pcLow.orR
   val hit = Wire(Bool())
-  when (writeValid) { // write前递（优先级高于ICache）
+  when (genValid) { // gen前递（优先级高于ICache）
     hit := true.B
-    out.bits.inst := writeData(pcOffset)
-    out.bits.trap := writeError || pcMisaligned
-    out.bits.cause := writeError
+    out.bits.inst := genData(pcOffset)
+    out.bits.trap := genError || pcMisaligned
+    out.bits.cause := genError
   } .elsewhen(cacheValid && cacheTag === pcTag) { // ICache命中
     hit := true.B
     out.bits.inst := cacheData(pcOffset)
@@ -82,10 +82,10 @@ class Fetch extends Module {
     out.bits.trap := DontCare
     out.bits.cause := DontCare
   }
-  out.valid := valid && hit
+  out.valid := valid && !io.flush && hit
   out.bits.pc := cachePc
 
-  // ---------- Write ----------
+  // ---------- gen ----------
   val burstOffset = Reg(UInt((offsetW - 2).W))
   memReadIO.req := req
   memReadIO.addr := Cat(getTag(cachePc), getIndex(cachePc), 0.U(offsetW.W))
@@ -95,19 +95,19 @@ class Fetch extends Module {
     burstOffset := 0.U
   }
   when (req && memReadIO.resp) {
-    writeData(burstOffset) := memReadIO.data
+    genData(burstOffset) := memReadIO.data
     burstOffset := burstOffset + 1.U
     when (memReadIO.last) {
       req := false.B
-      writeValid := true.B
-      writeError := memReadIO.err
+      genValid := true.B
+      genError := memReadIO.err
     }
   }
-  icache.writeIO.en := valid && writeValid && !writeError
+  icache.writeIO.en := valid && genValid && !genError
   icache.writeIO.dirty := DontCare
   icache.writeIO.index := pcIndex
   icache.writeIO.tag := pcTag
-  icache.writeIO.data := writeData
+  icache.writeIO.data := genData
 
   // ---------- Flush ----------
   when (io.flush) {
