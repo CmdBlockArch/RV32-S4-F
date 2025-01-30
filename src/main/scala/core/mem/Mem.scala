@@ -27,11 +27,15 @@ class MemOut extends Bundle {
   // 调试
   val inst = if (debug) Some(Output(UInt(32.W))) else None
   val dnpc = if (debug) Some(Output(UInt(32.W))) else None
+  val skip = if (debug) Some(Output(Bool())) else None
 
   def wbFlush = csrWen || ret.orR || fenceI || fenceVMA || trap
 }
 
 object Mem {
+  object State extends ChiselEnum {
+    val stIdle, stWrite, stRead, stHold = Value
+  }
   def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
     val offset = Cat(addr(1, 0), 0.U(3.W))
     val wstrb = Wire(UInt(32.W))
@@ -81,64 +85,52 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val index = dc.getIndex(addr)
   val offset = dc.getOffset(addr)
 
-  // 命中判断逻辑
-  val genHit = WireDefault(genValid && genIndex === index && genTag === tag)
-  val dcacheHit = WireDefault(cur.dcacheValid && cur.dcacheTag === tag)
-  val hit = WireDefault(genHit || dcacheHit)
+  // gen优先级更高
+  val useGen = genValid && index === genIndex
+  val dcValid = Mux(useGen, true.B, cur.dcacheValid)
+  val dcTag = Mux(useGen, genTag, cur.dcacheTag)
+  val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
+  val dcDirty = Mux(useGen, genDirty, cur.dcacheDirty)
+  val dcData = Mux(useGen, genData, cur.dcacheData)
+  val dcHit = dcValid && dcTag === tag
+  val dcEvict = dcValid && dcDirty
 
   // 状态机
-  val evictReq = RegInit(false.B)
-  val readReq = RegInit(false.B)
-  val reqFin = RegInit(false.B)
-  val idle = !(evictReq || readReq || reqFin)
+  import Mem.State._
+  val state = RegInit(stIdle)
   val burstOffset = Reg(UInt((dc.offsetW - 2).W))
-  when (idle) {
-    when (valid && mem && !hit) { // valid && mem && !hit && !cur.trap
-      when (cur.dcacheDirty) {
-        evictReq := true.B
-      } .otherwise {
-        readReq := true.B
-        genValid := false.B
-        burstOffset := 0.U
-      }
-    }
-  }
-  when (memBwIO.resp) {
-    evictReq := false.B
-
-    readReq := true.B
+  val idle = state === stIdle
+  val hold = state === stHold
+  when (idle && valid && mem && !dcHit && dcEvict) { state := stWrite }
+  when ((idle && valid && mem && !dcHit && !dcEvict) || memBwIO.resp) {
+    state := stRead
     genValid := false.B
+    cur.dcacheValid := false.B
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
     genData(burstOffset) := memReadIO.data
     burstOffset := burstOffset + 1.U
-    when (memReadIO.last) {
-      readReq := false.B
-      reqFin := true.B
-    }
+    when (memReadIO.last) { state := stHold }
   }
-  when (reqFin) {
-    reqFin := false.B // wb不可能阻塞，保持一周期即可
-  }
-  memBwIO.req := evictReq
-  memBwIO.addr := Cat(cur.dcacheTag, index, 0.U(dc.offsetW.W))
-  memBwIO.data := cur.dcacheData
-  memReadIO.req := readReq
+  when (hold) { state := stIdle } // wb不可能阻塞，保持一周期即可
+  memBwIO.req := state === stWrite
+  memBwIO.addr := dcAddr
+  memBwIO.data := dcData
+  memReadIO.req := state === stRead
   memReadIO.addr := Cat(addr(31, dc.offsetW), 0.U(dc.offsetW.W))
   memReadIO.setBurst(dc.blockN)
 
   // load/store结果
-  val hitData = Mux(genHit, genData, cur.dcacheData)
-  val data = Mux(reqFin, genData(offset), hitData(offset))
+  val data = Mux(hold, genData(offset), dcData(offset))
   val loadVal = Mem.getLoadVal(cur.mem, addr, data)
   val storeVal = Mem.getStoreVal(cur.mem, addr, data, cur.data)
 
   // dcache写入
-  when (valid && store && dcacheHit && !genHit) {
+  when (valid && store && dcHit && !useGen) {
     genData := cur.dcacheData
   }
-  when ((valid && store && hit) || reqFin) {
+  when ((valid && store && dcHit) || hold) {
     genValid := true.B
     genDirty := store
     genTag := tag
@@ -152,11 +144,11 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val gprFwIO = IO(new GprFwIO)
   gprFwIO.valid := valid
   gprFwIO.rd := cur.rd
-  gprFwIO.ready := cur.fwReady || (load && hit)
+  gprFwIO.ready := cur.fwReady || (load && dcHit)
   gprFwIO.fwVal := Mux(load, loadVal, cur.rdVal)
 
   // 阶段完成条件
-  setOutCond(cur.trap || !mem || hit || reqFin)
+  setOutCond(cur.trap || !mem || dcHit || hold)
 
   // 输出
   out.bits.rd := cur.rd
@@ -176,5 +168,6 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   if (debug) {
     out.bits.inst.get := cur.inst.get
     out.bits.dnpc.get := cur.dnpc.get
+    out.bits.skip.get := cur.skip.get
   }
 }
