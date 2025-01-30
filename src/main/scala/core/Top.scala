@@ -19,8 +19,8 @@ import perip.{SimMemRead, SimMemWrite, AxiReadIO, AxiWriteIO}
 class Top extends Module {
   val gpr = Module(new RegFile)
   val dcache = Module(new DataCache.dcacheFactory.CacheWay)
-  val memReadArb = Module(new MemReadArb(2))
-  val memWriteArb = Module(new MemWriteArb(1))
+  val memReadArb = Module(new MemReadArb(3))
+  val memWriteArb = Module(new MemWriteArb(2))
 
   val fetch = Module(new Fetch)
   val decode = Module(new Decode); decode.in :<>= fetch.out
@@ -47,13 +47,15 @@ class Top extends Module {
   // memPre
   memPre.flush := wb.io.flush
   dcache.readIO :<>= memPre.dcacheReadIO
+  memReadArb.master(1) :<>= memPre.memReadIO
+  memWriteArb.master(0) :<>= memPre.memWriteIO
   gpr.fwIO(1) :<>= memPre.gprFwIO
 
   // mem
   mem.flush := wb.io.flush
   dcache.writeIO :<>= mem.dcacheWriteIO
-  memReadArb.master(1) :<>= mem.memReadIO
-  memWriteArb.master(0) :<>= mem.memWriteIO
+  memReadArb.master(2) :<>= mem.memReadIO
+  memWriteArb.master(1) :<>= mem.memWriteIO
   gpr.fwIO(2) :<>= mem.gprFwIO
 
   // wb

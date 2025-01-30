@@ -13,6 +13,7 @@ class WbDebugOut extends Bundle {
   val inst = Output(UInt(32.W))
   val dnpc = Output(UInt(32.W))
   val ebreak = Output(Bool())
+  val skip = Output(Bool())
 }
 
 class WriteBack extends Module {
@@ -59,9 +60,6 @@ class WriteBack extends Module {
   val trap = RegNext(in.bits.trap)
   val cause = RegNext(in.bits.cause)
 
-  val inst = if (debug) Some(RegNext(in.bits.inst.get)) else None
-  val dnpc = if (debug) Some(RegNext(in.bits.dnpc.get, 0x80000000L.U(32.W))) else None
-
   val retEn = ret.orR
   val mret = ret === "b11".U(2.W)
   val sret = ret === "b10".U(2.W)
@@ -85,6 +83,9 @@ class WriteBack extends Module {
   io.fenceVMA := valid && fenceVMA
 
   // debug
+  val inst = if (debug) Some(RegNext(in.bits.inst.get)) else None
+  val dnpc = if (debug) Some(RegNext(in.bits.dnpc.get, 0x80000000L.U(32.W))) else None
+  val skip = if (debug) Some(RegNext(in.bits.skip.get)) else None
   val debugOut = if (debug) Some(IO(new WbDebugOut)) else None
   if (debug) {
     debugOut.get.commit := valid
@@ -92,5 +93,6 @@ class WriteBack extends Module {
     debugOut.get.inst := inst.get
     debugOut.get.dnpc := dnpc.get
     debugOut.get.ebreak := valid && trap && cause === 3.U
+    debugOut.get.skip := skip.get
   }
 }
