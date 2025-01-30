@@ -87,11 +87,11 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
 
   // gen优先级更高
   val useGen = genValid && index === genIndex
-  val dcValid = Mux(useGen, true.B, cur.dcacheValid)
+  val dcValid = useGen || cur.dcacheValid
   val dcTag = Mux(useGen, genTag, cur.dcacheTag)
   val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
   val dcDirty = Mux(useGen, genDirty, cur.dcacheDirty)
-  val dcData = Mux(useGen, genData, cur.dcacheData)
+  val dcData = Mux(useGen, genData.asUInt, cur.dcacheData.asUInt).asTypeOf(dc.dataType)
   val dcHit = dcValid && dcTag === tag
   val dcEvict = dcValid && dcDirty
 
@@ -122,7 +122,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   memReadIO.setBurst(dc.blockN)
 
   // load/store结果
-  val data = Mux(hold, genData(offset), dcData(offset))
+  val data = Mux(hold, genData(offset).asUInt, dcData(offset).asUInt)
   val loadVal = Mem.getLoadVal(cur.mem, addr, data)
   val storeVal = Mem.getStoreVal(cur.mem, addr, data, cur.data)
 
