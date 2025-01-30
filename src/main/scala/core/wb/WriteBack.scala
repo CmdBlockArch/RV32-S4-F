@@ -21,13 +21,12 @@ class WriteBack extends Module {
   in.ready := true.B
 
   val flush = RegInit(false.B)
-  val inValid = in.valid && !flush
-  val valid = RegNext(inValid, false.B)
-  flush := inValid && in.bits.wbFlush
+  val valid = RegNext(in.valid, false.B)
+  flush := in.valid && in.bits.wbFlush
 
   // 寄存器写
   val gprWriteIO = IO(new GprWriteIO)
-  gprWriteIO.en := inValid
+  gprWriteIO.en := in.valid
   gprWriteIO.rd := in.bits.rd
   gprWriteIO.data := in.bits.rdVal
 
@@ -46,7 +45,7 @@ class WriteBack extends Module {
 
   // CSR写
   val csrWritePort = new CsrWritePort(csrRegFile)
-  when (inValid && in.bits.csrWen) {
+  when (in.bits.csrWen) {
     csrWritePort(in.bits.csrAddr, in.bits.csrData)
   }
 

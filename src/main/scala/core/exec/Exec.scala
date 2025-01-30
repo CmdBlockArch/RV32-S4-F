@@ -118,6 +118,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
     (!cur.mul && !cur.zicsr) -> aluRes,
   ))
   out.bits.fwReady := cur.fwReady || cur.mul || cur.zicsr
+  // 重要：发生异常（trap）时，控制信号（访存、返回、fence）应当为0
   out.bits.mem := Mux(cur.trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc
   out.bits.ret := Mux(cur.trap, 0.U(2.W), cur.ret)
