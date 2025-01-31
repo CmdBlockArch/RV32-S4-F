@@ -63,8 +63,7 @@ class Fetch extends Module {
   val pcTag = getTag(cachePc)
   val pcIndex = getIndex(cachePc)
   val pcOffset = getOffset(cachePc)
-  val pcLow = cachePc(1, 0)
-  val pcMisaligned = pcLow.orR
+  val pcMisaligned = cachePc(1, 0).orR
   val hit = Wire(Bool())
   when (genValid) { // gen前递（优先级高于ICache）
     hit := true.B

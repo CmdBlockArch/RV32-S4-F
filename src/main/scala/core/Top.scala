@@ -39,6 +39,10 @@ class Top extends Module {
   decode.flush := exec.io.jmp || wb.io.flush
   gpr.readIO :<>= decode.gprReadIO
   wb.csrReadIO :<>= decode.csrReadIO
+  decode.io.priv := wb.io.priv
+  decode.io.mstatusTSR := wb.io.mstatusTSR
+  decode.io.mstatusTVM := wb.io.mstatusTVM
+  decode.io.mstatusTW := wb.io.mstatusTW
 
   // exec
   exec.flush := wb.io.flush

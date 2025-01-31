@@ -56,8 +56,12 @@ object AluFuncEnField extends BoolDecodeField[InstPattern] {
   // 0: func = 0
   override def genTable(op: InstPattern): BitPat = {
     op.opcode.rawString match {
-      case CALRI | CALRR | BRANCH => y // 分支func复用
+      case CALRI | CALRR => y
       case LUI | AUIPC | JAL | JALR | LOAD | STORE => n
+      case SYSTEM => op.func3.rawString match {
+        case "000" => dc
+        case _ => y // zicsr
+      }
       case _ => dc
     }
   }
@@ -217,6 +221,13 @@ object EbreakField extends BoolDecodeField[InstPattern] {
   }
 }
 
+object WfiField extends BoolDecodeField[InstPattern] {
+  override def name = "wfi" // 是否为WFI操作
+  override def genTable(op: InstPattern): BitPat = {
+    if (InstPattern.wfi.bitPat.cover(op.inst)) y else n
+  }
+}
+
 object InvInstField extends BoolDecodeField[InstPattern] {
   override def name = "invInst" // 是否为非法指令
   override def default = y
@@ -227,6 +238,6 @@ object InstField {
   val fields = Seq(
     ImmSelField, ValASelField, ValBSelField, AluFuncEnField, AluSignEnField,
     RdEnField, FwReadyField, JmpField, MulField, MemField, ZicsrEnField,
-    RetField, FenceIField, FenceVMAField, EcallField, EbreakField, InvInstField
+    RetField, FenceIField, FenceVMAField, EcallField, EbreakField, WfiField, InvInstField
   )
 }

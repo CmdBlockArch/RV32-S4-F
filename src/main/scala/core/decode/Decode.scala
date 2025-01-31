@@ -4,9 +4,10 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode.DecodeTable
 import core.csr.CsrReadIO
-import utils.PiplineModule
 import core.fetch.FetchOut
 import core.gpr.GprReadIO
+import core.csr.Priv
+import utils.PiplineModule
 import utils.Config._
 
 class DecodeOut extends Bundle {
@@ -18,7 +19,7 @@ class DecodeOut extends Bundle {
   // ALU选数/功能
   val valASel = Output(UInt(3.W))
   val valBSel = Output(UInt(3.W))
-  val aluFunc = Output(new FuncBundle) // 分支类型复用
+  val aluFunc = Output(new FuncBundle)
   // ALU前递路径
   val rd = Output(UInt(5.W))
   val fwReady = Output(Bool()) // rd是否可以直接前递
@@ -116,20 +117,40 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val csrWriteRO = csrAddr(11, 10).andR && csrWen
   val csrErr = zicsr && (csrWriteRO || csrReadIO.err)
 
-  // SYS
-  out.bits.ret := cs(RetField)
+  // io
+  val io = IO(new Bundle {
+    val priv = Input(UInt(2.W))
+    val mstatusTSR = Input(Bool())
+    val mstatusTVM = Input(Bool())
+    val mstatusTW = Input(Bool())
+  })
+
+  // ret
+  val ret = cs(RetField)
+  out.bits.ret := ret
+  val retErr = MuxLookup(ret, false.B)(Seq(
+    Priv.M -> (io.priv =/= Priv.M),
+    Priv.S -> (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTSR))
+  ))
+  // fence
   out.bits.fenceI := cs(FenceIField)
-  out.bits.fenceVMA := cs(FenceVMAField)
+  val fenceVMA = cs(FenceVMAField)
+  out.bits.fenceVMA := fenceVMA
+  val fenceVMAErr = fenceVMA && (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTVM))
+  // ecall & ebreak
   val ecall = cs(EcallField)
   val ebreak = cs(EbreakField)
+  // wfi
+  val wfi = cs(WfiField)
+  val wfiErr = wfi && io.priv === Priv.U && io.mstatusTW
 
   // trap
-  val invInst = cs(InvInstField) || csrErr
+  val invInst = cs(InvInstField) || csrErr || retErr || fenceVMAErr || wfiErr
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst || ecall || ebreak
   out.bits.cause := Mux1H(Seq(
     invInst -> 2.U,
-    ecall -> 11.U, // TODO: ecall cause
+    ecall -> (8.U(4.W) | io.priv),
     ebreak -> 3.U,
   ))
 
