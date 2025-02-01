@@ -110,14 +110,19 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
 
   setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
 
+  // rd
+  val atomic = !cur.mem(3, 2).orR && cur.mem(1, 0).orR
   out.bits.rd := cur.rd
   out.bits.rdVal := Mux1H(Seq(
     (cur.mul && mulFuncMul) -> mulVal,
     (cur.mul && !mulFuncMul) -> divVal,
+    atomic -> cur.src1,
     cur.zicsr -> cur.csrSrc,
-    (!cur.mul && !cur.zicsr) -> aluRes,
+    (!cur.mul && !atomic && !cur.zicsr) -> aluRes,
   ))
   out.bits.fwReady := cur.fwReady || cur.mul || cur.zicsr
+
+  // output
   // 重要：发生异常（trap）时，控制信号（访存、返回、fence）应当为0
   out.bits.mem := Mux(cur.trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc

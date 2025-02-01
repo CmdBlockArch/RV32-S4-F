@@ -12,6 +12,8 @@ import core.mem.Mem
 import utils.Config._
 
 class MemPreOut extends ExecOut {
+  // sc
+  val sc = Output(Bool())
   // Data Cache
   val dcacheValid = Output(Bool())
   val dcacheDirty = Output(Bool())
@@ -31,13 +33,6 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   // output
   out.bits.viewAsSupertype(new ExecOut) := cur
 
-  // 前递
-  val gprFwIO = IO(new GprFwIO)
-  gprFwIO.valid := valid
-  gprFwIO.rd := cur.rd
-  gprFwIO.ready := cur.fwReady
-  gprFwIO.fwVal := cur.rdVal
-
   // dcache读
   val dcacheReadIO = IO(new dc.readIO)
   dcacheReadIO.index := dc.getIndex(cur.rdVal)
@@ -46,13 +41,35 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
 
-  // MMIO
-  // setOutCond() TODO
-  val inMem = cur.rdVal(31, 28) === "h8".U(4.W)
-  val mmio = WireDefault(cur.mem.orR && !inMem)
-  out.bits.mem := Mux(mmio, 0.U(4.W), cur.mem)
+  // LR&SC
+  val lrsc = !cur.mem(3, 2).orR && cur.mem(1, 0).xorR
+  val lr = cur.mem === "b0001".U(4.W)
+  val sc = cur.mem === "b0010".U(4.W)
+  val reservedAddr = RegInit(0.U(32.W))
+  when (valid && lr) { reservedAddr := cur.rdVal }
+  when (valid && sc) { reservedAddr := 0.U }
+  val scSucc = sc && reservedAddr === cur.rdVal
+  val scFail = sc && reservedAddr =/= cur.rdVal
+  out.bits.sc := scSucc
+  out.bits.mem := Mux1H(Seq(
+    lr -> "b1110".U(4.W),
+    scFail -> 0.U(4.W),
+    scSucc -> "b0110".U(4.W),
+    !lrsc -> cur.mem
+  ))
+  out.bits.rdVal := Mux(scFail, 1.U(32.W), cur.rdVal)
+  out.bits.fwReady := cur.fwReady || sc
 
-  // MMIO读写端口
+  // 前递
+  val gprFwIO = IO(new GprFwIO)
+  gprFwIO.valid := valid
+  gprFwIO.rd := cur.rd
+  gprFwIO.ready := cur.fwReady || sc
+  gprFwIO.fwVal := Mux(sc, scFail, cur.rdVal)
+
+  // MMIO
+  val inMem = cur.rdVal(31, 28) === "h8".U(4.W)
+  val mmio = WireDefault(cur.mem.orR && !inMem) // 先验：LRSC不会访问MMIO
   val memReadIO = IO(new MemReadIO)
   val memWriteIO = IO(new MemWriteIO)
 
@@ -74,6 +91,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     state := stHold
     cur.rdVal := Mem.getLoadVal(cur.mem, cur.rdVal, memReadIO.data)
     cur.fwReady := true.B
+    cur.mem := 0.U(4.W)
   }
   when (memWriteIO.dataReady) { dataValid := false.B }
   when (memWriteIO.resp) { state := stHold }

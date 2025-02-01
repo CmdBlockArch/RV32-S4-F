@@ -145,14 +145,15 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   gprFwIO.valid := valid
   gprFwIO.rd := cur.rd
   gprFwIO.ready := cur.fwReady || (load && dcHit)
-  gprFwIO.fwVal := Mux(load, loadVal, cur.rdVal)
+  val rdVal = Mux(load, loadVal, Mux(cur.sc, 0.U, cur.rdVal))
+  gprFwIO.fwVal := rdVal
 
   // 阶段完成条件
   setOutCond(!mem || dcHit || hold)
 
   // 输出
   out.bits.rd := cur.rd
-  out.bits.rdVal := Mux(load, loadVal, cur.rdVal)
+  out.bits.rdVal := rdVal
   // csrWen信号直通WB，保证指令进入WB同时写入CSR（和GPR一样）
   // 基于先验：CSR写入时无访存操作，mem信号必为0
   // TODO: 考察除了zicsr外的CSR写入
