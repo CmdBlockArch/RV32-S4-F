@@ -29,7 +29,7 @@ class Alu extends Module {
     func.and -> (a & b),
   ))
 
-  val cf = Mux(func.adderEn, adderRes(32), false.B)
+  val cf = adderRes(32)
   val sf = e(31)
   val of = (a(31) === b(31)) && (sf ^ a(31))
 

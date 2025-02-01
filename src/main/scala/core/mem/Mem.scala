@@ -2,11 +2,11 @@ package core.mem
 
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.decode.{TruthTable, decoder}
 import utils.PiplineModule
 import core.gpr.GprFwIO
-import core.misc.{MemReadIO, MemWriteIO, MemBurstWriteHelper}
+import core.misc.{MemBurstWriteHelper, MemReadIO, MemWriteIO}
 import utils.Config._
-
 import DataCache.{dcacheFactory => dc}
 
 class MemOut extends Bundle {
@@ -36,6 +36,19 @@ object Mem {
   object State extends ChiselEnum {
     val stIdle, stWrite, stRead, stHold = Value
   }
+  val amoTruthTable = TruthTable(
+    Map(
+      BitPat("b0001") -> BitPat("b000000001"),
+      BitPat("b0000") -> BitPat("b000000010"),
+      BitPat("b0010") -> BitPat("b000000100"),
+      BitPat("b0110") -> BitPat("b000001000"),
+      BitPat("b0100") -> BitPat("b000010000"),
+      BitPat("b1000") -> BitPat("b000100000"),
+      BitPat("b1010") -> BitPat("b001000000"),
+      BitPat("b1100") -> BitPat("b010000000"),
+      BitPat("b1110") -> BitPat("b100000000"),
+    ), BitPat.dontCare(9)
+  )
   def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
     val offset = Cat(addr(1, 0), 0.U(3.W))
     val wstrb = Wire(UInt(32.W))
@@ -46,9 +59,32 @@ object Mem {
   def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
     val offset = Cat(addr(1, 0), 0.U(3.W))
     val rdata = Wire(UInt(32.W)); rdata := old >> offset
-    Mux(mem(1), rdata, Mux(mem(0),
+    Mux(mem(1), rdata, Mux(mem(0), // amo操作码刚好对应lw，且地址一定对齐
       Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
       Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
+    ))
+  }
+  def getAmoVal(func: UInt, old: UInt, data: UInt): UInt = {
+    val func1H = decoder(func, amoTruthTable)
+    val add = func1H(1)
+    val a = Wire(UInt(32.W)); a := old
+    val b = Wire(UInt(32.W)); b := data ^ Fill(32, !add)
+    val e = (a +& b) + (!add).asUInt
+    val cf = e(32)
+    val sf = e(31)
+    val of = (a(31) === b(31)) && (sf ^ a(31))
+    val lts = sf ^ of
+    val geu = cf
+    Mux1H(func1H, Seq(
+      data, // swap
+      e(31, 0), // add
+      old ^ data, // xor
+      old & data, // and
+      old | data, // or
+      Mux(lts, old, data), // min
+      Mux(lts, data, old), // max
+      Mux(geu, data, old), // minu
+      Mux(geu, old, data), // maxu
     ))
   }
 }
@@ -65,6 +101,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val mem = cur.mem.orR
   val load = cur.mem(3)
   val store = cur.mem(3, 2) === "b01".U(2.W)
+  val amo = cur.mem === "b0011".U(4.W)
 
   // cache写入生成
   val genValid = RegInit(false.B)
@@ -92,7 +129,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
   val dcDirty = Mux(useGen, genDirty, cur.dcacheDirty)
   val dcData = Mux(useGen, genData.asUInt, cur.dcacheData.asUInt).asTypeOf(dc.dataType)
-  val dcHit = dcValid && dcTag === tag
+  val dcHit = dcValid && Mux(useGen, genTag === dcTag, cur.dcacheTag === dcTag)
   val dcEvict = dcValid && dcDirty
 
   // 状态机
@@ -122,30 +159,30 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   memReadIO.setBurst(dc.blockN)
 
   // load/store结果
-  val data = Mux(hold, genData(offset).asUInt, dcData(offset).asUInt)
-  val loadVal = Mem.getLoadVal(cur.mem, addr, data)
-  val storeVal = Mem.getStoreVal(cur.mem, addr, data, cur.data)
+  val data = Mux(hold || useGen, genData(offset).asUInt, cur.dcacheData(offset).asUInt)
+  val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, addr, data)
+  val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, addr, data, cur.data)
+  val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
   // dcache写入
-  when (valid && store && dcHit && !useGen) {
+  when (valid && (store || amo) && dcHit && !useGen) {
     genData := cur.dcacheData
   }
-  when ((valid && store && dcHit) || hold) {
+  when ((valid && (store || amo) && dcHit) || hold) {
     genValid := true.B
     genDirty := store
     genTag := tag
     genIndex := index
-    when (store) {
-      genData(offset) := storeVal
-    }
+    when (store) { genData(offset) := storeVal }
+    when (amo) { genData(offset) := amoVal }
   }
 
   // 前递
   val gprFwIO = IO(new GprFwIO)
   gprFwIO.valid := valid
   gprFwIO.rd := cur.rd
-  gprFwIO.ready := cur.fwReady || (load && dcHit)
-  val rdVal = Mux(load, loadVal, Mux(cur.sc, 0.U, cur.rdVal))
+  gprFwIO.ready := cur.fwReady || ((load || amo) && dcHit)
+  val rdVal = Mux(load || amo, loadVal, Mux(cur.sc, 0.U, cur.rdVal))
   gprFwIO.fwVal := rdVal
 
   // 阶段完成条件
@@ -156,7 +193,6 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   out.bits.rdVal := rdVal
   // csrWen信号直通WB，保证指令进入WB同时写入CSR（和GPR一样）
   // 基于先验：CSR写入时无访存操作，mem信号必为0
-  // TODO: 考察除了zicsr外的CSR写入
   out.bits.csrWen := valid && !flush && cur.csrWen
   out.bits.csrAddr := cur.csrAddr
   out.bits.csrData := cur.data
