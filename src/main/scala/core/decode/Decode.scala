@@ -94,20 +94,20 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.fwReady := cs(FwReadyField)
 
   // 分支和跳转
-  val jmpFlag = cs(JmpField)
+  val jmpFlag = Mux(cur.trap, 0.U(3.W), cs(JmpField))
   out.bits.jal := jmpFlag(0)
   out.bits.jalr := jmpFlag(1)
   out.bits.branch := jmpFlag(2)
 
   // 功能单元控制
-  out.bits.mul := cs(MulField)
-  out.bits.mem := cs(MemField)
+  out.bits.mul := cs(MulField) && !cur.trap
+  out.bits.mem := Mux(cur.trap, 0.U, cs(MemField))
   out.bits.amoFunc := Cat(inst(31, 29), inst(27))
 
   // CSR
-  val zicsr = cs(ZicsrEnField)
+  val zicsr = cs(ZicsrEnField) && !cur.trap
   out.bits.zicsr := zicsr
-  val csrWen = !func3(1) || Mux(func3(2), immZ.orR, rs1.orR)
+  val csrWen = (!func3(1) || Mux(func3(2), immZ.orR, rs1.orR)) && !cur.trap
   out.bits.csrWen := csrWen
   val csrAddr = inst(31, 20)
   out.bits.csrAddr := csrAddr
@@ -126,33 +126,33 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   })
 
   // ret
-  val ret = cs(RetField)
+  val ret = Mux(cur.trap, 0.U, cs(RetField))
   out.bits.ret := ret
   val retErr = MuxLookup(ret, false.B)(Seq(
     Priv.M -> (io.priv =/= Priv.M),
     Priv.S -> (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTSR))
   ))
   // fence
-  out.bits.fenceI := cs(FenceIField)
-  val fenceVMA = cs(FenceVMAField)
+  out.bits.fenceI := cs(FenceIField) && !cur.trap
+  val fenceVMA = cs(FenceVMAField) && !cur.trap
   out.bits.fenceVMA := fenceVMA
   val fenceVMAErr = fenceVMA && (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTVM))
   // ecall & ebreak
-  val ecall = cs(EcallField)
-  val ebreak = cs(EbreakField)
+  val ecall = cs(EcallField) && !cur.trap
+  val ebreak = cs(EbreakField) && !cur.trap
   // wfi
-  val wfi = cs(WfiField)
+  val wfi = cs(WfiField) && !cur.trap
   val wfiErr = wfi && io.priv === Priv.U && io.mstatusTW
 
   // trap
   val invInst = cs(InvInstField) || csrErr || retErr || fenceVMAErr || wfiErr
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst || ecall || ebreak
-  out.bits.cause := Mux1H(Seq(
+  out.bits.cause := Mux(cur.trap, 0.U, Mux1H(Seq(
     invInst -> 2.U,
     ecall -> (8.U(4.W) | io.priv),
     ebreak -> 3.U,
-  ))
+  )))
 
   if (debug) {
     out.bits.inst.get := inst

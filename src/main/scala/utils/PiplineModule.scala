@@ -12,8 +12,10 @@ abstract class PiplineModule[TI <: Data, TO <: Data]
   val valid = RegInit(false.B)
   val cur = Reg(inType)
 
-  in.ready := !valid || out.fire
-  out.valid := valid && !flush
+  val outCond = WireDefault(true.B)
+
+  in.ready := !valid || (out.ready && outCond)
+  out.valid := valid && !flush && outCond
   when (in.fire) {
     valid := true.B
     cur := in.bits
@@ -22,6 +24,6 @@ abstract class PiplineModule[TI <: Data, TO <: Data]
   }
 
   def setOutCond(cond: Bool) = {
-    out.valid := valid && !flush && cond
+    outCond := cond
   }
 }

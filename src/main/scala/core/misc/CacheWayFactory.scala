@@ -1,4 +1,4 @@
-package core.cache
+package core.misc
 
 import chisel3._
 import utils.SRam

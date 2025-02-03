@@ -122,16 +122,25 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   ))
   out.bits.fwReady := cur.fwReady || cur.mul || cur.zicsr
 
+  // mem
+  val misaligned = Wire(Bool())
+  misaligned := cur.mem.orR && Mux1H(Seq(
+    (cur.mem(1) || cur.mem(3, 2) === 0.U) -> aluRes(1, 0).orR, // 4 bytes
+    (cur.mem(0) && cur.mem(3, 2).orR) -> aluRes(0), // 2 bytes
+    (cur.mem(1, 0) === 0.U) -> false.B, // 1 byte
+  ))
+
   // output
   // 重要：发生异常（trap）时，控制信号（访存、返回、fence）应当为0
-  out.bits.mem := Mux(cur.trap, 0.U(4.W), cur.mem)
+  val trap = cur.trap || misaligned
+  out.bits.mem := Mux(trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc
-  out.bits.ret := Mux(cur.trap, 0.U(2.W), cur.ret)
-  out.bits.fenceI := cur.fenceI && !cur.trap
-  out.bits.fenceVMA := cur.fenceVMA && !cur.trap
+  out.bits.ret := Mux(trap, 0.U(2.W), cur.ret)
+  out.bits.fenceI := cur.fenceI && !trap
+  out.bits.fenceVMA := cur.fenceVMA && !trap
   out.bits.pc := cur.pc
-  out.bits.trap := cur.trap
-  out.bits.cause := cur.cause
+  out.bits.trap := trap
+  out.bits.cause := Mux(cur.trap, cur.cause, Mux(cur.mem(3), 4.U, 6.U))
 
   if (debug) {
     out.bits.inst.get := cur.inst.get

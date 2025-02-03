@@ -2,15 +2,14 @@ package core.fetch
 
 import chisel3._
 import chisel3.util._
-import core.misc.MemReadIO
-import core.cache.CacheWayFactory
+import core.misc.{CacheWayFactory, MemReadIO}
 
 class FetchOut extends Bundle {
   val pc = UInt(32.W)
   val inst = UInt(32.W)
 
   val trap = Bool()
-  val cause = UInt(4.W)
+  // val cause = UInt(4.W) // only 0
 }
 
 class Fetch extends Module {
@@ -37,7 +36,6 @@ class Fetch extends Module {
   val req = RegInit(false.B)
   val genValid = RegInit(false.B)
   val genData = Reg(dataType)
-  val genError = Reg(Bool())
 
   val pc = RegInit(0x80000000L.U(32.W))
   val valid = RegInit(false.B)
@@ -63,25 +61,20 @@ class Fetch extends Module {
   val pcTag = getTag(cachePc)
   val pcIndex = getIndex(cachePc)
   val pcOffset = getOffset(cachePc)
-  val pcMisaligned = cachePc(1, 0).orR
+  val trap = cachePc(1, 0).orR // pc misaligned
   val hit = Wire(Bool())
   when (genValid) { // gen前递（优先级高于ICache）
     hit := true.B
     out.bits.inst := genData(pcOffset)
-    out.bits.trap := genError || pcMisaligned
-    out.bits.cause := genError
   } .elsewhen(cacheValid && cacheTag === pcTag) { // ICache命中
     hit := true.B
     out.bits.inst := cacheData(pcOffset)
-    out.bits.trap := pcMisaligned
-    out.bits.cause := 0.U
   } .otherwise { // miss
     hit := false.B
     out.bits.inst := DontCare
-    out.bits.trap := DontCare
-    out.bits.cause := DontCare
   }
-  out.valid := valid && !io.flush && hit
+  out.bits.trap := trap
+  out.valid := valid && !io.flush && (hit || trap)
   out.bits.pc := cachePc
 
   // ---------- gen ----------
@@ -89,7 +82,7 @@ class Fetch extends Module {
   memReadIO.req := req
   memReadIO.addr := Cat(getTag(cachePc), getIndex(cachePc), 0.U(offsetW.W))
   memReadIO.setBurst(blockN)
-  when (!req && valid && !hit && !io.flush) {
+  when (!req && valid && !(hit || trap) && !io.flush) {
     req := true.B
     burstOffset := 0.U
   }
@@ -99,10 +92,9 @@ class Fetch extends Module {
     when (memReadIO.last) {
       req := false.B
       genValid := true.B
-      genError := memReadIO.err
     }
   }
-  icache.writeIO.en := valid && genValid && !genError
+  icache.writeIO.en := valid && genValid
   icache.writeIO.dirty := DontCare
   icache.writeIO.index := pcIndex
   icache.writeIO.tag := pcTag

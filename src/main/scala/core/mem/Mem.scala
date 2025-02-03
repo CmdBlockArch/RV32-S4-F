@@ -129,7 +129,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
   val dcDirty = Mux(useGen, genDirty, cur.dcacheDirty)
   val dcData = Mux(useGen, genData.asUInt, cur.dcacheData.asUInt).asTypeOf(dc.dataType)
-  val dcHit = dcValid && Mux(useGen, genTag === dcTag, cur.dcacheTag === dcTag)
+  val dcHit = dcValid && Mux(useGen, genTag === tag, cur.dcacheTag === tag)
   val dcEvict = dcValid && dcDirty
 
   // 状态机
