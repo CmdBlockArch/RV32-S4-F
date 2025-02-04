@@ -43,63 +43,6 @@ class MemOut extends Bundle {
   def sret = ret === "b10".U(2.W)
 }
 
-object Mem {
-  object State extends ChiselEnum {
-    val stIdle, stWrite, stRead, stHold = Value
-  }
-  val amoTruthTable = TruthTable(
-    Map(
-      BitPat("b0001") -> BitPat("b000000001"),
-      BitPat("b0000") -> BitPat("b000000010"),
-      BitPat("b0010") -> BitPat("b000000100"),
-      BitPat("b0110") -> BitPat("b000001000"),
-      BitPat("b0100") -> BitPat("b000010000"),
-      BitPat("b1000") -> BitPat("b000100000"),
-      BitPat("b1010") -> BitPat("b001000000"),
-      BitPat("b1100") -> BitPat("b010000000"),
-      BitPat("b1110") -> BitPat("b100000000"),
-    ), BitPat.dontCare(9)
-  )
-  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
-    val offset = Cat(addr(1, 0), 0.U(3.W))
-    val wstrb = Wire(UInt(32.W))
-    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), Fill(8, 1.U(1.W))) << offset
-    val wdata = Wire(UInt(32.W)); wdata := data << offset
-    (old & ~wstrb) | (wdata & wstrb)
-  }
-  def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
-    val offset = Cat(addr(1, 0), 0.U(3.W))
-    val rdata = Wire(UInt(32.W)); rdata := old >> offset
-    Mux(mem(1), rdata, Mux(mem(0), // amo操作码刚好对应lw，且地址一定对齐
-      Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
-      Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
-    ))
-  }
-  def getAmoVal(func: UInt, old: UInt, data: UInt): UInt = {
-    val func1H = decoder(func, amoTruthTable)
-    val add = func1H(1)
-    val a = Wire(UInt(32.W)); a := old
-    val b = Wire(UInt(32.W)); b := data ^ Fill(32, !add)
-    val e = (a +& b) + (!add).asUInt
-    val cf = e(32)
-    val sf = e(31)
-    val of = (a(31) === b(31)) && (sf ^ a(31))
-    val lts = sf ^ of
-    val geu = cf
-    Mux1H(func1H, Seq(
-      data, // swap
-      e(31, 0), // add
-      old ^ data, // xor
-      old & data, // and
-      old | data, // or
-      Mux(lts, old, data), // min
-      Mux(lts, data, old), // max
-      Mux(geu, data, old), // minu
-      Mux(geu, old, data), // maxu
-    ))
-  }
-}
-
 class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   // 内存读写端口
   val memWriteIO = IO(new MemWriteIO)
@@ -218,5 +161,62 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
     out.bits.inst.get := cur.inst.get
     out.bits.dnpc.get := cur.dnpc.get
     out.bits.skip.get := cur.skip.get
+  }
+}
+
+object Mem {
+  object State extends ChiselEnum {
+    val stIdle, stWrite, stRead, stHold = Value
+  }
+  val amoTruthTable = TruthTable(
+    Map(
+      BitPat("b0001") -> BitPat("b000000001"),
+      BitPat("b0000") -> BitPat("b000000010"),
+      BitPat("b0010") -> BitPat("b000000100"),
+      BitPat("b0110") -> BitPat("b000001000"),
+      BitPat("b0100") -> BitPat("b000010000"),
+      BitPat("b1000") -> BitPat("b000100000"),
+      BitPat("b1010") -> BitPat("b001000000"),
+      BitPat("b1100") -> BitPat("b010000000"),
+      BitPat("b1110") -> BitPat("b100000000"),
+    ), BitPat.dontCare(9)
+  )
+  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val wstrb = Wire(UInt(32.W))
+    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), Fill(8, 1.U(1.W))) << offset
+    val wdata = Wire(UInt(32.W)); wdata := data << offset
+    (old & ~wstrb) | (wdata & wstrb)
+  }
+  def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
+    val offset = Cat(addr(1, 0), 0.U(3.W))
+    val rdata = Wire(UInt(32.W)); rdata := old >> offset
+    Mux(mem(1), rdata, Mux(mem(0), // amo操作码刚好对应lw，且地址一定对齐
+      Cat(Fill(16, rdata(15) && mem(2)), rdata(15, 0)), // 01
+      Cat(Fill(24, rdata( 7) && mem(2)), rdata( 7, 0)), // 00
+    ))
+  }
+  def getAmoVal(func: UInt, old: UInt, data: UInt): UInt = {
+    val func1H = decoder(func, amoTruthTable)
+    val add = func1H(1)
+    val a = Wire(UInt(32.W)); a := old
+    val b = Wire(UInt(32.W)); b := data ^ Fill(32, !add)
+    val e = (a +& b) + (!add).asUInt
+    val cf = e(32)
+    val sf = e(31)
+    val of = (a(31) === b(31)) && (sf ^ a(31))
+    val lts = sf ^ of
+    val geu = cf
+    Mux1H(func1H, Seq(
+      data, // swap
+      e(31, 0), // add
+      old ^ data, // xor
+      old & data, // and
+      old | data, // or
+      Mux(lts, old, data), // min
+      Mux(lts, data, old), // max
+      Mux(geu, data, old), // minu
+      Mux(geu, old, data), // maxu
+    ))
   }
 }
