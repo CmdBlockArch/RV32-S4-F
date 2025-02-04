@@ -20,7 +20,7 @@ class MemPreOut extends ExecOut {
   val dcacheTag = Output(UInt(dc.tagW.W))
   val dcacheData = Output(dc.dataType)
   // debug
-  val skip = if (debug) Some(Output(Bool())) else None
+  val skip = DebugOutput(Bool())
 }
 
 object MemPre {
@@ -41,6 +41,10 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
 
+  // MMIO控制信号
+  val inMem = cur.rdVal(31, 28) === "h8".U(4.W)
+  val mmio = WireDefault(cur.mem.orR && !inMem) // 先验：LRSC不会访问MMIO
+
   // LR&SC
   val lrsc = !cur.mem(3, 2).orR && cur.mem(1, 0).xorR
   val lr = cur.mem === "b0001".U(4.W)
@@ -55,7 +59,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     lr -> "b1110".U(4.W),
     scFail -> 0.U(4.W),
     scSucc -> "b0110".U(4.W),
-    !lrsc -> cur.mem
+    !lrsc -> Mux(mmio, 0.U(4.W), cur.mem)
   ))
   out.bits.rdVal := Mux(scFail, 1.U(32.W), cur.rdVal)
   out.bits.fwReady := cur.fwReady || sc
@@ -67,13 +71,9 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   gprFwIO.ready := cur.fwReady || sc
   gprFwIO.fwVal := Mux(sc, scFail, cur.rdVal)
 
-  // MMIO
-  val inMem = cur.rdVal(31, 28) === "h8".U(4.W)
-  val mmio = WireDefault(cur.mem.orR && !inMem) // 先验：LRSC不会访问MMIO
+  // MMIO访存状态机
   val memReadIO = IO(new MemReadIO)
   val memWriteIO = IO(new MemWriteIO)
-
-  // 状态机
   import MemPre.State._
   val state = RegInit(stIdle)
   val dataValid = RegInit(false.B)
@@ -91,18 +91,12 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     state := stHold
     cur.rdVal := Mem.getLoadVal(cur.mem, cur.rdVal, memReadIO.data)
     cur.fwReady := true.B
-    cur.mem := 0.U(4.W)
   }
   when (memWriteIO.dataReady) { dataValid := false.B }
   when (memWriteIO.resp) { state := stHold }
   when (out.fire) { state := stIdle }
-  /*
-  * 接到flush信号最早在req拉高的下一周期
-  * 这时由于组合逻辑拉低了req，所以总线事务还未开始
-  * 直接取消总线事务即可（详细解释见下）
-  * */
   when (flush) { state := stIdle }
-  memReadIO.req := state === stRead && !flush // flush通过组合逻辑拉低req
+  memReadIO.req := state === stRead
   memReadIO.addr := cur.rdVal
   memReadIO.size := cur.mem(1, 0)
   memReadIO.burst := 0.U(2.W) // fixed
@@ -118,6 +112,8 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     cur.mem(1, 0).orR, 1.U(1.W)) << cur.rdVal(1, 0)
   memWriteIO.last := true.B
   setOutCond(!mmio || state === stHold)
+
+  // out.bits.flush := cur.flush || mmuIO.pf
 
   // TODO: Dcache冲刷时写回
 

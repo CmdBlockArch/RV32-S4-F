@@ -19,59 +19,7 @@ class WbDebugOut extends Bundle {
 class WriteBack extends Module {
   val in = IO(Flipped(Decoupled(new MemOut)))
   in.ready := true.B
-
-  // valid & flush
-  val flush = RegInit(false.B)
-  val valid = RegNext(in.valid, false.B)
-  flush := in.valid && in.bits.wbFlush
-
-  // 特权级
-  val priv = RegInit(Priv.M)
-  val privM = priv(1)
-  val privS = priv === Priv.S
-
-  // ---------- GPR & CSR ----------
-  // 寄存器写
-  val gprWriteIO = IO(new GprWriteIO)
-  gprWriteIO.en := in.valid
-  gprWriteIO.rd := in.bits.rd
-  gprWriteIO.data := in.bits.rdVal
-
-  // CSR & CSR读
-  val csr = new CsrRegFile
-  val csrReadIO = IO(Flipped(new CsrReadIO))
-  val csrReadPort = new CsrReadPort(csr)
-  val (csrReadData: UInt, csrReadErr: Bool) = csrReadPort(csrReadIO.addr)
-  csrReadIO.data := csrReadData
-  csrReadIO.err := csrReadErr
-
-  // CSR写
-  val csrWritePort = new CsrWritePort(csr)
-  when (in.bits.csrWen) {
-    csrWritePort(in.bits.csrAddr, in.bits.csrData)
-  }
-
-  // ---------- 流水级寄存器 ----------
-  // SYS
-  val ret = RegNext(in.bits.ret)
-  val fenceI = RegNext(in.bits.fenceI)
-  val fenceVMA = RegNext(in.bits.fenceVMA)
-  // 异常
-  val pc = RegNext(in.bits.pc)
-  val trap = RegNext(in.bits.trap)
-  val cause = RegNext(in.bits.cause)
-
-  // ---------- 流水级逻辑 ----------
-  // ret信号
-  val retEn = ret.orR
-  val mret = ret === "b11".U(2.W)
-  val sret = ret === "b10".U(2.W)
-  // trap信号
-  val medeleg = Cat(csr.medelegh, csr.medeleg)
-  val trapToS = privS && medeleg(cause)
-  val trapAddr = Mux(trapToS, csr.stvec, csr.mtvec)
-
-  // fence & flush
+  val cur = in.bits
   val io = IO(new Bundle {
     val flush = Output(Bool())
     val dnpc = Output(UInt(32.W))
@@ -83,33 +31,69 @@ class WriteBack extends Module {
     val mstatusTVM = Output(Bool())
     val mstatusTW = Output(Bool())
   })
-  io.flush := flush
-  io.dnpc := Mux1H(Seq(
-    mret -> csr.mepc,
-    sret -> csr.sepc,
-    trap -> trapAddr,
-    (!retEn && !trap) -> (pc + 4.U)
-  ))
-  io.fenceI := valid && fenceI
-  io.fenceVMA := valid && fenceVMA
-  io.priv := priv
+
+  // ---------- WB流水级器件 ----------
+  // CSR
+  val csr = new CsrRegFile
   io.mstatusTSR := csr.TSR
   io.mstatusTVM := csr.TVM
   io.mstatusTW := csr.TW
 
+  // CSR读，master位于Decode
+  val csrReadIO = IO(Flipped(new CsrReadIO))
+  val csrReadPort = new CsrReadPort(csr)
+  val (csrReadData: UInt, csrReadErr: Bool) = csrReadPort(csrReadIO.addr)
+  csrReadIO.data := csrReadData
+  csrReadIO.err := csrReadErr
+
+  // 特权级
+  val priv = RegInit(Priv.M)
+  val privM = priv(1)
+  val privS = priv === Priv.S
+  io.priv := priv
+
+  // ---------- WB动作逻辑 ----------
+  // 寄存器写
+  val gprWriteIO = IO(new GprWriteIO)
+  gprWriteIO.en := in.valid // 流水级的valid信号
+  gprWriteIO.rd := cur.rd
+  gprWriteIO.data := cur.rdVal
+
+  // CSR写
+  val csrWritePort = new CsrWritePort(csr)
+  when (cur.valid && cur.csrWen) {
+    csrWritePort(cur.csrAddr, cur.csrData)
+  }
+
+  // flush
+  io.flush := cur.valid && cur.flush
+  val medeleg = csr.medeleg(15, 0)
+  val trapToS = privS && medeleg(cur.cause)
+  val trapAddr = Mux(trapToS, csr.stvec, csr.mtvec)
+  io.dnpc := Mux1H(Seq(
+    cur.mret -> csr.mepc,
+    cur.sret -> csr.sepc,
+    cur.trap -> trapAddr,
+    (!cur.retEn && !cur.trap) -> (cur.pc + 4.U)
+  ))
+
+  // fence
+  io.fenceI := cur.valid && cur.fenceI
+  io.fenceVMA := cur.valid && cur.fenceVMA
+
   // trap
-  when (valid && trap) {
+  when (cur.valid && cur.trap) {
     when (trapToS) { // trap to S-Mode
-      csr.scause := cause
-      csr.sepc := pc
+      csr.scause := cur.cause
+      csr.sepc := cur.pc
       csr.stval := 0.U // TODO: stval
       csr.SPIE := csr.SIE
       csr.SIE := false.B
       csr.SPP := priv
       priv := Priv.S
     } .otherwise { // trap to M-Mode
-      csr.mcause := cause
-      csr.mepc := pc
+      csr.mcause := cur.cause
+      csr.mepc := cur.pc
       csr.mtval := 0.U // TODO: mtval
       csr.MPIE := csr.MIE
       csr.MIE := false.B
@@ -119,14 +103,14 @@ class WriteBack extends Module {
   }
 
   // ret
-  when (valid && mret) {
+  when (cur.valid && cur.mret) {
     csr.MIE := csr.MPIE
     csr.MPIE := true.B
     priv := csr.MPP
     when (csr.MPP =/= Priv.M) { csr.MPRV := false.B }
     csr.MPP := Priv.U
   }
-  when (valid && sret) {
+  when (cur.valid && cur.sret) {
     csr.SIE := csr.SPIE
     csr.SPIE := true.B
     priv := csr.SPP
@@ -135,16 +119,20 @@ class WriteBack extends Module {
   }
 
   // ---------- debug ----------
-  val inst = if (debug) Some(RegNext(in.bits.inst.get)) else None
-  val dnpc = if (debug) Some(RegNext(in.bits.dnpc.get, 0x80000000L.U(32.W))) else None
-  val skip = if (debug) Some(RegNext(in.bits.skip.get)) else None
-  val debugOut = if (debug) Some(IO(new WbDebugOut)) else None
+  val commit = DebugRegNext(in.valid, false.B)
+  val pc = DebugRegNext(cur.pc)
+  val trap = DebugRegNext(cur.trap)
+  val cause = DebugRegNext(cur.cause)
+  val inst = DebugRegNext(cur.inst)
+  val dnpc = if (debug) Some(RegNext(Mux(io.flush, io.dnpc, cur.dnpc.get), resetVec)) else None
+  val skip = DebugRegNext(cur.skip)
+  val debugOut = DebugIO(new WbDebugOut)
   if (debug) {
-    debugOut.get.commit := valid
-    debugOut.get.pc := pc
+    debugOut.get.commit := commit.get
+    debugOut.get.pc := pc.get
     debugOut.get.inst := inst.get
-    debugOut.get.dnpc := Mux(io.flush, io.dnpc, dnpc.get)
-    debugOut.get.ebreak := valid && trap && cause === 3.U
+    debugOut.get.dnpc := dnpc.get
+    debugOut.get.ebreak := commit.get && trap.get && cause.get === 3.U
     debugOut.get.skip := skip.get
   }
 }

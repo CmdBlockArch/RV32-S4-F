@@ -56,7 +56,7 @@ class Top extends Module {
   gpr.fwIO(1) :<>= memPre.gprFwIO
 
   // mem
-  mem.flush := wb.io.flush
+  mem.flush := false.B
   dcache.writeIO :<>= mem.dcacheWriteIO
   memReadArb.master(2) :<>= mem.memReadIO
   memWriteArb.master(1) :<>= mem.memWriteIO
@@ -66,24 +66,22 @@ class Top extends Module {
   gpr.writeIO :<>= wb.gprWriteIO
   dcache.io.flush := wb.io.fenceI || wb.io.fenceVMA
 
-  if (synthesis) { // axi port
-    val axiReadIO = IO(new AxiReadIO)
-    val axiWriteIO = IO(new AxiWriteIO)
-    axiReadIO :<>= memReadArb.slave
-    axiWriteIO :<>= memWriteArb.slave
-  } else { // simMem
+  if (debug) { // simMem
     val simMemRead = Module(new SimMemRead)
     val simMemWrite = Module(new SimMemWrite)
     simMemRead.io :<>= memReadArb.slave
     simMemWrite.io :<>= memWriteArb.slave
+  } else { // axi port
+    val axiReadIO = IO(new AxiReadIO)
+    val axiWriteIO = IO(new AxiWriteIO)
+    axiReadIO :<>= memReadArb.slave
+    axiWriteIO :<>= memWriteArb.slave
   }
 
   // debug
-  val debugIO = if (debug) {
-    Some(IO(new WbDebugOut {
-      val gpr = Output(Vec(32, UInt(32.W)))
-    }))
-  } else None
+  val debugIO = DebugIO(new WbDebugOut {
+    val gpr = Output(Vec(32, UInt(32.W)))
+  })
   if (debug) {
     debugIO.get.viewAsSupertype(new WbDebugOut) := wb.debugOut.get
     debugIO.get.gpr := gpr.debugOut.get

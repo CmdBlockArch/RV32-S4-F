@@ -68,7 +68,7 @@ class RegFile extends Module {
     regs(writeIO.rd) := writeIO.data
   }
 
-  val debugOut = if (debug) Some(IO(Output(Vec(32, UInt(32.W))))) else None
+  val debugOut = DebugIO(Output(Vec(32, UInt(32.W))))
   if (debug) {
     debugOut.get := regs
   }

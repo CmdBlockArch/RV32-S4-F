@@ -45,7 +45,7 @@ class DecodeOut extends Bundle {
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
   // 调试
-  val inst = if (debug) Some(Output(UInt(32.W))) else None
+  val inst = DebugOutput(UInt(32.W))
 }
 
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {

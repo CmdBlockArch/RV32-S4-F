@@ -10,6 +10,14 @@ import utils.Config._
 import DataCache.{dcacheFactory => dc}
 
 class MemOut extends Bundle {
+  /*
+  * 除了GPR之外的控制信号生效时，都不需要进行访存
+  * 所以只有GPR需要等待流水级的valid信号
+  * 其他信号在Mem阶段就已经有效，故将valid直通给WB阶段
+  * 使得这些信号的valid时序路径更短
+  * */
+  val valid = Output(Bool())
+  // GPR
   val rd = Output(UInt(5.W))
   val rdVal = Output(UInt(32.W))
   // CSR
@@ -24,12 +32,15 @@ class MemOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  val flush = Output(Bool())
   // 调试
-  val inst = if (debug) Some(Output(UInt(32.W))) else None
-  val dnpc = if (debug) Some(Output(UInt(32.W))) else None
-  val skip = if (debug) Some(Output(Bool())) else None
+  val inst = DebugOutput(UInt(32.W))
+  val dnpc = DebugOutput(UInt(32.W))
+  val skip = DebugOutput(Bool())
 
-  def wbFlush = csrWen || ret.orR || fenceI || fenceVMA || trap
+  def retEn = ret.orR
+  def mret = ret === "b11".U(2.W)
+  def sret = ret === "b10".U(2.W)
 }
 
 object Mem {
@@ -189,11 +200,10 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   setOutCond(!mem || dcHit || hold)
 
   // 输出
+  out.bits.valid := valid
   out.bits.rd := cur.rd
   out.bits.rdVal := rdVal
-  // csrWen信号直通WB，保证指令进入WB同时写入CSR（和GPR一样）
-  // 基于先验：CSR写入时无访存操作，mem信号必为0
-  out.bits.csrWen := valid && !flush && cur.csrWen
+  out.bits.csrWen := cur.csrWen
   out.bits.csrAddr := cur.csrAddr
   out.bits.csrData := cur.data
   out.bits.ret := cur.ret
@@ -202,8 +212,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap
   out.bits.cause := cur.cause
-
-  // TODO: LR SC AMO
+  out.bits.flush := cur.flush
 
   if (debug) {
     out.bits.inst.get := cur.inst.get

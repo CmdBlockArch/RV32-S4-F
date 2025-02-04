@@ -3,6 +3,7 @@ package core.fetch
 import chisel3._
 import chisel3.util._
 import core.misc.{CacheWayFactory, MemReadIO}
+import utils.Config._
 
 class FetchOut extends Bundle {
   val pc = UInt(32.W)
@@ -37,7 +38,7 @@ class Fetch extends Module {
   val genValid = RegInit(false.B)
   val genData = Reg(dataType)
 
-  val pc = RegInit(0x80000000L.U(32.W))
+  val pc = RegInit(resetVec)
   val valid = RegInit(false.B)
   val ready = (!valid && !req) || (out.ready && out.valid)
 

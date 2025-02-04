@@ -26,9 +26,12 @@ class ExecOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  val flush = Output(Bool())
   // 调试
-  val inst = if (debug) Some(Output(UInt(32.W))) else None
-  val dnpc = if (debug) Some(Output(UInt(32.W))) else None
+  val inst = DebugOutput(UInt(32.W))
+  val dnpc = DebugOutput(UInt(32.W))
+
+  def flushEn = csrWen || ret.orR || fenceI || fenceVMA || trap
 }
 
 class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
@@ -135,12 +138,13 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val trap = cur.trap || misaligned
   out.bits.mem := Mux(trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc
-  out.bits.ret := Mux(trap, 0.U(2.W), cur.ret)
-  out.bits.fenceI := cur.fenceI && !trap
-  out.bits.fenceVMA := cur.fenceVMA && !trap
+  out.bits.ret := Mux(cur.trap, 0.U(2.W), cur.ret)
+  out.bits.fenceI := cur.fenceI && !cur.trap
+  out.bits.fenceVMA := cur.fenceVMA && !cur.trap
   out.bits.pc := cur.pc
   out.bits.trap := trap
   out.bits.cause := Mux(cur.trap, cur.cause, Mux(cur.mem(3), 4.U, 6.U))
+  out.bits.flush := out.bits.flushEn
 
   if (debug) {
     out.bits.inst.get := cur.inst.get
