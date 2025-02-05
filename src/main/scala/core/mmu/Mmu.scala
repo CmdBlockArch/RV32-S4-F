@@ -1,10 +1,13 @@
 package core.mmu
 
 import chisel3._
+import chisel3.util._
 
 class MmuIO extends Bundle {
   val req = Output(Bool())
-  val mode = Output(UInt(2.W)) // 00: fetch, 01: load, 10: store
+  val fetch = Output(Bool())
+  val load = Output(Bool())
+  val store = Output(Bool())
   val vpn = Output(UInt(20.W))
 
   val resp = Input(Bool())
@@ -13,5 +16,47 @@ class MmuIO extends Bundle {
 }
 
 class Mmu extends Module {
+  val io = IO(new Bundle {
+    val flush = Input(Bool())
+    val fenceVMA = Input(Bool())
 
+    val satp = Input(UInt(32.W))
+    val priv = Input(UInt(2.W))
+    val mstatusMPRV = Input(Bool())
+    val mstatusMPP = Input(UInt(2.W))
+    val mstatusSUM = Input(Bool())
+    val mstatusMXR = Input(Bool())
+  })
+  val mmuIO = IO(Flipped(new MmuIO))
+
+  val priv = Mux(io.mstatusMPRV && !mmuIO.fetch, io.mstatusMPP, io.priv)
+  val bare = !io.satp(31) || priv(1) // M-mode不进行地址转换
+
+  // TLB读取
+  val tlb = Module(new Tlb)
+  val hit = tlb.readIO.valid
+  tlb.io.flush := io.fenceVMA
+  tlb.readIO.vpn := mmuIO.vpn
+  val res = tlb.readIO
+  val resPpn = Mux(res.mega, Cat(res.ppn(19, 10), mmuIO.vpn(9, 0)), res.ppn)
+  val privPF = Mux(priv(0), res.user && (mmuIO.fetch || !io.mstatusSUM), !res.user)
+  val actPF = (mmuIO.fetch && res.exec) || (mmuIO.store && res.write) ||
+    (mmuIO.load && (res.read || (res.exec && io.mstatusMXR)))
+  val flagPF = !res.access || (!res.dirty && mmuIO.store)
+
+  // TLB缺失，请求PTW
+  val ptwIO = IO(MmuBundle.walkerIO)
+  val ptwReq = RegInit(false.B)
+  ptwIO.req := ptwReq
+  ptwIO.ptn := io.satp(19, 0)
+  ptwIO.vpn := mmuIO.vpn
+  when (mmuIO.req && !bare && !hit && !io.flush) { ptwReq := true.B }
+  when (ptwIO.valid) { ptwReq := false.B }
+  tlb.writeIO.value := ptwIO.value
+  tlb.writeIO.vpn := mmuIO.vpn
+
+  // 翻译结果
+  mmuIO.resp := bare || hit
+  mmuIO.pf := !bare && (privPF || actPF || flagPF)
+  mmuIO.ppn := Mux(bare, mmuIO.vpn, resPpn)
 }
