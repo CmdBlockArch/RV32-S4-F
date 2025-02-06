@@ -19,7 +19,6 @@ class MemPreOut extends ExecOut {
   val sc = Output(Bool())
   // Data Cache
   val dcacheValid = Output(Bool())
-  val dcacheDirty = Output(Bool())
   val dcacheTag = Output(UInt(dc.tagW.W))
   val dcacheData = Output(dc.dataType)
   // debug
@@ -40,7 +39,6 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val dcacheReadIO = IO(new dc.readIO)
   dcacheReadIO.index := dc.getIndex(cur.rdVal)
   out.bits.dcacheValid := dcacheReadIO.valid
-  out.bits.dcacheDirty := dcacheReadIO.dirty
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
 

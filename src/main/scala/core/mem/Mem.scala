@@ -4,9 +4,9 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.decode.{TruthTable, decoder}
 import utils.PiplineModule
-import core.gpr.GprFwIO
-import core.misc.{MemBurstWriteHelper, MemReadIO, MemWriteIO}
 import utils.Config._
+import core.gpr.GprFwIO
+import core.misc.{MemReadIO, MemWriteIO}
 import DataCache.{dcacheFactory => dc}
 
 class MemOut extends Bundle {
@@ -44,12 +44,10 @@ class MemOut extends Bundle {
 }
 
 class Mem extends PiplineModule(new MemPreOut, new MemOut) {
-  // 内存读写端口
-  val memWriteIO = IO(new MemWriteIO)
-  val memBw = Module((new MemBurstWriteHelper(dc.blockN))())
-  memWriteIO :<>= memBw.slave
-  val memBwIO = memBw.master
   val memReadIO = IO(new MemReadIO)
+  val memWriteIO = IO(new MemWriteIO)
+  val sb = Module(new StoreBuffer)
+  memWriteIO :<>= sb.memWriteIO
 
   // 内存操作控制信号
   val mem = cur.mem.orR
@@ -63,13 +61,11 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
 
   // cache写入生成
   val genValid = RegInit(false.B)
-  val genDirty = Reg(Bool())
   val genTag = Reg(UInt(dc.tagW.W))
   val genIndex = Reg(UInt(dc.indexW.W))
   val genData = Reg(dc.dataType)
   val dcacheWriteIO = IO(new dc.writeIO)
   dcacheWriteIO.en := genValid
-  dcacheWriteIO.dirty := genDirty
   dcacheWriteIO.tag := genTag
   dcacheWriteIO.index := genIndex
   dcacheWriteIO.data := genData
@@ -84,55 +80,60 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val dcValid = useGen || cur.dcacheValid
   val dcTag = Mux(useGen, genTag, cur.dcacheTag)
   val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
-  val dcDirty = Mux(useGen, genDirty, cur.dcacheDirty)
   val dcData = Mux(useGen, genData.asUInt, cur.dcacheData.asUInt).asTypeOf(dc.dataType)
   val dcHit = dcValid && Mux(useGen, genTag === tag, cur.dcacheTag === tag)
-  val dcEvict = dcValid && dcDirty
 
   // 状态机
-  import Mem.State._
-  val state = RegInit(stIdle)
+  val req = RegInit(false.B)
   val burstOffset = Reg(UInt((dc.offsetW - 2).W))
-  val idle = state === stIdle
-  val hold = state === stHold
-  when (idle && valid && mem && !dcHit && dcEvict) { state := stWrite }
-  when ((idle && valid && mem && !dcHit && !dcEvict) || memBwIO.resp) {
-    state := stRead
+  sb.io.lock := valid && mem && !dcHit
+  when (!req && sb.io.locked) {
+    req := true.B
     genValid := false.B
+    genTag := tag
+    genIndex := index
     cur.dcacheValid := false.B
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
-    genData(burstOffset) := memReadIO.data
+    genData(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
     burstOffset := burstOffset + 1.U
-    when (memReadIO.last) { state := stHold }
+    when (memReadIO.last) {
+      req := false.B
+      genValid := true.B
+    }
   }
-  when (hold) { state := stIdle } // wb不可能阻塞，保持一周期即可
-  memBwIO.req := state === stWrite
-  memBwIO.addr := dcAddr
-  memBwIO.data := dcData
-  memReadIO.req := state === stRead
+  memReadIO.req := req
   memReadIO.addr := Cat(paddr(31, dc.offsetW), 0.U(dc.offsetW.W))
   memReadIO.setBurst(dc.blockN)
+  sb.readIO.addr := Cat(paddr(31, dc.offsetW), burstOffset, 0.U(2.W))
 
   // load/store结果
-  val data = Mux(hold || useGen, genData(offset).asUInt, cur.dcacheData(offset).asUInt)
+  val storeValid = valid && (store || amo) && dcHit
+  val data = Mux(useGen, genData(offset).asUInt, cur.dcacheData(offset).asUInt)
   val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
   val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, paddr, data, cur.data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
   // dcache写入
-  when (valid && (store || amo) && dcHit && !useGen) {
+  when (storeValid && !useGen) {
     genData := cur.dcacheData
   }
-  when ((valid && (store || amo) && dcHit) || hold) {
+  when (storeValid) {
     genValid := true.B
-    genDirty := store
     genTag := tag
     genIndex := index
     when (store) { genData(offset) := storeVal }
     when (amo) { genData(offset) := amoVal }
   }
+
+  // store buffer写入
+  sb.writeIO.req := storeValid
+  sb.writeIO.addr := paddr
+  sb.writeIO.data := storeVal
+
+  // 阶段完成条件
+  setOutCond(!mem || (dcHit && (!(store || amo) || sb.writeIO.resp)))
 
   // 前递
   val gprFwIO = IO(new GprFwIO)
@@ -141,9 +142,6 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   gprFwIO.ready := cur.fwReady || ((load || amo) && dcHit)
   val rdVal = Mux(load || amo, loadVal, Mux(cur.sc, 0.U, cur.rdVal))
   gprFwIO.fwVal := rdVal
-
-  // 阶段完成条件
-  setOutCond(!mem || dcHit || hold)
 
   // 输出
   out.bits.valid := valid
@@ -168,9 +166,6 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
 }
 
 object Mem {
-  object State extends ChiselEnum {
-    val stIdle, stWrite, stRead, stHold = Value
-  }
   val amoTruthTable = TruthTable(
     Map(
       BitPat("b0001") -> BitPat("b000000001"),

@@ -126,7 +126,6 @@ class Fetch extends Module {
   memReadIO.addr := Cat(cachePaddr(31, offsetW), 0.U(offsetW.W))
   memReadIO.setBurst(blockN)
   icache.writeIO.en := valid && genValid && !genPf
-  icache.writeIO.dirty := DontCare
   icache.writeIO.index := pcIndex
   icache.writeIO.tag := pcTag
   icache.writeIO.data := genData

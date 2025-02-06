@@ -6,6 +6,9 @@ import core.misc.{MemWriteIO, MemBurstWriteHelper}
 
 class StoreBuffer(size: Int = 16) extends Module {
   val io = IO(new Bundle {
+    val lock = Input(Bool())
+    val locked = Output(Bool())
+
     val full = Output(Bool())
     val empty = Output(Bool())
   })
@@ -68,10 +71,10 @@ class StoreBuffer(size: Int = 16) extends Module {
   val actIdx = Reg(UInt(log2Up(size).W))
   val actAddr = r(actIdx).addr
   val actData = Reg(UInt(32.W))
-  when (idle && !empty) {
+  when (idle && !empty && !io.lock) {
     state := stStore
     actIdx := validIdx
-    actData := r(validIdx)
+    actData := r(validIdx).data
   }
   when (memBwIO.fire) {
     state := stIdle
@@ -81,7 +84,8 @@ class StoreBuffer(size: Int = 16) extends Module {
   }
   memBwIO.req := state === stStore
   memBwIO.addr := actAddr
-  memBwIO.data := actData
+  memBwIO.data(0) := actData
+  io.locked := io.lock && idle
 }
 
 object StoreBuffer {
