@@ -21,8 +21,6 @@ class MemPreOut extends ExecOut {
   val dcacheValid = Output(Bool())
   val dcacheTag = Output(UInt(dc.tagW.W))
   val dcacheData = Output(dc.dataType)
-  // debug
-  val skip = DebugOutput(Bool())
 }
 
 object MemPre {
@@ -143,15 +141,15 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
 
   val memFinish = !mem || pf || (mmuHit && inMem) || hold
   setOutCond(memFinish && fenceFinish)
-  out.bits.trap := cur.trap || (mem && pf)
+  val trap = cur.trap || (mem && pf)
+  out.bits.trap := trap
+  out.bits.rd := Mux(trap, 0.U, cur.rd)
   out.bits.cause := Mux(cur.trap, cur.cause, mmuIO.cause)
   out.bits.flush := cur.flush || (mem && pf)
 
   // TODO: Dcache冲刷时写回
 
   if (debug) {
-    out.bits.inst.get := cur.inst.get
-    out.bits.dnpc.get := cur.dnpc.get
-    out.bits.skip.get := mmio
+    out.bits.skip.get := cur.skip.get || mmio
   }
 }

@@ -46,6 +46,7 @@ class DecodeOut extends Bundle {
   val cause = Output(UInt(4.W))
   // 调试
   val inst = DebugOutput(UInt(32.W))
+  val skip = DebugOutput(Bool())
 }
 
 class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
@@ -156,6 +157,8 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   )))
 
   if (debug) {
+    val skipCSR = VecInit(Seq("h301".U, "hc00".U, "hc01".U, "hc02".U, "hc80".U, "hc81".U, "hc82".U))
     out.bits.inst.get := inst
+    out.bits.skip.get := zicsr && skipCSR.contains(csrAddr)
   }
 }

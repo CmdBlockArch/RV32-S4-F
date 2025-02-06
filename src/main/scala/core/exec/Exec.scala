@@ -30,6 +30,7 @@ class ExecOut extends Bundle {
   // 调试
   val inst = DebugOutput(UInt(32.W))
   val dnpc = DebugOutput(UInt(32.W))
+  val skip = DebugOutput(Bool())
 
   def flushEn = csrWen || ret.orR || fenceI || trap
 }
@@ -149,5 +150,6 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   if (debug) {
     out.bits.inst.get := cur.inst.get
     out.bits.dnpc.get := Mux(io.jmp, io.dnpc, cur.pc + 4.U)
+    out.bits.skip.get := cur.skip.get
   }
 }
