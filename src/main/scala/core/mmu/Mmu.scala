@@ -52,7 +52,7 @@ class Mmu extends Module {
   ptwIO.req := ptwReq
   ptwIO.ptn := io.satp(19, 0)
   ptwIO.vpn := mmuIO.vpn
-  when (mmuIO.valid && !bare && !hit && !io.flush) { ptwReq := true.B }
+  when (!ptwReq && mmuIO.valid && !bare && !hit && !io.flush) { ptwReq := true.B }
   when (ptwReq && io.flush && !ptwIO.valid) { flushReg := true.B }
   when (ptwIO.valid) {
     ptwReq := false.B
@@ -63,8 +63,8 @@ class Mmu extends Module {
   tlb.writeIO.vpn := mmuIO.vpn
 
   // 翻译结果
-  mmuIO.hit := bare || hit
-  mmuIO.pf := !bare && (privPF || actPF || flagPF)
+  mmuIO.hit := bare || hit || io.flush
+  mmuIO.pf := !bare && (privPF || actPF || flagPF || io.flush)
   mmuIO.cause := 12.U(4.W) | Cat(0.U(2.W), mmuIO.store, !mmuIO.fetch)
   mmuIO.ppn := Mux(bare, mmuIO.vpn, resPpn)
 }

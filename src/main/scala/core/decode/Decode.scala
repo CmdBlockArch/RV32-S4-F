@@ -133,9 +133,10 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
     Priv.S -> (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTSR))
   ))
   // fence
-  out.bits.fenceI := cs(FenceIField) && !cur.trap
   val fenceVMA = cs(FenceVMAField) && !cur.trap
   out.bits.fenceVMA := fenceVMA
+  val fenceI = cs(FenceIField) && !cur.trap
+  out.bits.fenceI := fenceI || fenceVMA
   val fenceVMAErr = fenceVMA && (io.priv === Priv.U || (io.priv === Priv.S && io.mstatusTVM))
   // ecall & ebreak
   val ecall = cs(EcallField) && !cur.trap

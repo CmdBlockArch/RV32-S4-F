@@ -135,7 +135,14 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     cur.mem(1, 0).orR, 1.U(1.W)) << cur.rdVal(1, 0)
   memWriteIO.last := true.B
 
-  setOutCond(!mem || pf || (mmuHit && inMem) || hold)
+  // fenceI sfenceVMA
+  val io = IO(new Bundle {
+    val sbEmpty = Input(Bool())
+  })
+  val fenceFinish = !cur.fenceI || io.sbEmpty // 等待StoreBuffer全部写回
+
+  val memFinish = !mem || pf || (mmuHit && inMem) || hold
+  setOutCond(memFinish && fenceFinish)
   out.bits.trap := cur.trap || (mem && pf)
   out.bits.cause := Mux(cur.trap, cur.cause, mmuIO.cause)
   out.bits.flush := cur.flush || (mem && pf)

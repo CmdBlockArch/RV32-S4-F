@@ -50,7 +50,7 @@ class Top extends Module {
   // fetch
   fetch.io.flush := exec.io.jmp || wb.io.flush
   fetch.io.dnpc := Mux(wb.io.flush, wb.io.dnpc, exec.io.dnpc)
-  fetch.io.fenceI := wb.io.fenceI || wb.io.fenceVMA
+  fetch.io.fenceI := wb.io.fenceI
   memReadArb.master(0) :<>= fetch.memReadIO
   val iMmu = mkMmu(0)
   iMmu.io.flush := wb.io.flush
@@ -71,6 +71,7 @@ class Top extends Module {
 
   // memPre
   memPre.flush := wb.io.flush
+  memPre.io.sbEmpty := mem.io.sbEmpty
   dcache.readIO :<>= memPre.dcacheReadIO
   memReadArb.master(1) :<>= memPre.memReadIO
   memWriteArb.master(1) :<>= memPre.memWriteIO
@@ -88,7 +89,7 @@ class Top extends Module {
 
   // wb
   gpr.writeIO :<>= wb.gprWriteIO
-  dcache.io.flush := wb.io.fenceI || wb.io.fenceVMA
+  dcache.io.flush := wb.io.fenceI
 
   if (debug) { // simMem
     val simMemRead = Module(new SimMemRead)

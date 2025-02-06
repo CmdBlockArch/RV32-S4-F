@@ -31,7 +31,7 @@ class ExecOut extends Bundle {
   val inst = DebugOutput(UInt(32.W))
   val dnpc = DebugOutput(UInt(32.W))
 
-  def flushEn = csrWen || ret.orR || fenceI || fenceVMA || trap
+  def flushEn = csrWen || ret.orR || fenceI || trap
 }
 
 class Exec extends PiplineModule(new DecodeOut, new ExecOut) {

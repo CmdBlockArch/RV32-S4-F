@@ -48,6 +48,10 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val memWriteIO = IO(new MemWriteIO)
   val sb = Module(new StoreBuffer)
   memWriteIO :<>= sb.memWriteIO
+  val io = IO(new Bundle {
+    val sbEmpty = Output(Bool())
+  })
+  io.sbEmpty := sb.io.empty
 
   // 内存操作控制信号
   val mem = cur.mem.orR
