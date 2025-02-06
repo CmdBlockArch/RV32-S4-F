@@ -2,7 +2,7 @@ package core.misc
 
 import chisel3._
 
-class MemBurstWriteHelper(val len: Int) {
+class MemBurstWriteHelper(val len: Int = 1) {
   class MasterIO extends Bundle {
     val req = Output(Bool())
     val addr = Output(UInt(32.W))
@@ -10,6 +10,8 @@ class MemBurstWriteHelper(val len: Int) {
 
     val resp = Input(Bool())
     val err = Input(Bool())
+
+    def fire = req && resp
   }
 
   class BurstWriteModule extends Module {
@@ -18,7 +20,11 @@ class MemBurstWriteHelper(val len: Int) {
     slave.req := master.req
     slave.addr := master.addr
     slave.size := "b10".U
-    slave.burst := "b10".U
+    if (len == 1) {
+      slave.burst := "b00".U
+    } else {
+      slave.burst := "b10".U
+    }
     slave.len := (len - 1).U
 
     val running = RegInit(false.B)
