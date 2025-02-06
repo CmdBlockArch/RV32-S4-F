@@ -57,6 +57,10 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val store = cur.mem(3, 2) === "b01".U(2.W)
   val amo = cur.mem === "b0011".U(4.W)
 
+  // 地址翻译结果
+  val vaddr = cur.rdVal
+  val paddr = Cat(cur.ppn, cur.rdVal(11, 0))
+
   // cache写入生成
   val genValid = RegInit(false.B)
   val genDirty = Reg(Bool())
@@ -70,11 +74,10 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   dcacheWriteIO.index := genIndex
   dcacheWriteIO.data := genData
 
-  // 当前指令读取/写入的地址
-  val addr = cur.rdVal
-  val tag = dc.getTag(addr)
-  val index = dc.getIndex(addr)
-  val offset = dc.getOffset(addr)
+  // 当前指令读取/写入的地址，vipt
+  val tag = dc.getTag(paddr)
+  val index = dc.getIndex(paddr)
+  val offset = dc.getOffset(paddr)
 
   // gen优先级更高
   val useGen = genValid && index === genIndex
@@ -109,13 +112,13 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   memBwIO.addr := dcAddr
   memBwIO.data := dcData
   memReadIO.req := state === stRead
-  memReadIO.addr := Cat(addr(31, dc.offsetW), 0.U(dc.offsetW.W))
+  memReadIO.addr := Cat(paddr(31, dc.offsetW), 0.U(dc.offsetW.W))
   memReadIO.setBurst(dc.blockN)
 
   // load/store结果
   val data = Mux(hold || useGen, genData(offset).asUInt, cur.dcacheData(offset).asUInt)
-  val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, addr, data)
-  val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, addr, data, cur.data)
+  val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
+  val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, paddr, data, cur.data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
   // dcache写入

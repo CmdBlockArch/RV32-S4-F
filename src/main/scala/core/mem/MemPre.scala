@@ -52,7 +52,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
 
   // MMU
   val mmuIO = IO(new MmuIO)
-  mmuIO.valid := valid && mem
+  mmuIO.valid := valid && mem && !flush
   mmuIO.fetch := false.B
   mmuIO.load := cur.mem(3) || lr
   mmuIO.store := !cur.mem(3) && !lr

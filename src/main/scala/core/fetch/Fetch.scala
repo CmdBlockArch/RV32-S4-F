@@ -3,6 +3,7 @@ package core.fetch
 import chisel3._
 import chisel3.util._
 import core.misc.{CacheWayFactory, MemReadIO}
+import core.mmu.MmuIO
 import utils.Config._
 
 class FetchOut extends Bundle {
@@ -10,7 +11,7 @@ class FetchOut extends Bundle {
   val inst = UInt(32.W)
 
   val trap = Bool()
-  // val cause = UInt(4.W) // only 0
+  val cause = UInt(4.W)
 }
 
 class Fetch extends Module {
@@ -19,6 +20,7 @@ class Fetch extends Module {
 
   val out = IO(Decoupled(new FetchOut))
   val memReadIO = IO(new MemReadIO)
+  val mmuIO = IO(new MmuIO)
   val io = IO(new Bundle {
     val flush = Input(Bool())
     val dnpc = Input(UInt(32.W))
@@ -34,13 +36,19 @@ class Fetch extends Module {
   val cacheTag = Reg(UInt(tagW.W))
   val cacheData = Reg(dataType)
 
-  val req = RegInit(false.B)
+  import Fetch.State._
+  val state = RegInit(stIdle)
+  val idle = state === stIdle
+  val mmuIng = state === stMmu
+  val fetchIng = state === stFetch
+
   val genValid = RegInit(false.B)
   val genData = Reg(dataType)
+  val genPf = Reg(Bool())
 
   val pc = RegInit(resetVec)
   val valid = RegInit(false.B)
-  val ready = (!valid && !req) || (out.ready && out.valid)
+  val ready = (!valid && idle) || (out.ready && out.valid)
 
   // ---------- Cache ----------
   when (io.flush) {
@@ -51,7 +59,7 @@ class Fetch extends Module {
   icache.readIO.index := getIndex(pc)
 
   // ---------- Fetch ----------
-  when (ready && !req) {
+  when (ready && idle) {
     valid := !io.flush
     cachePc := pc
     cacheValid := icache.readIO.valid
@@ -62,40 +70,62 @@ class Fetch extends Module {
   val pcTag = getTag(cachePc)
   val pcIndex = getIndex(cachePc)
   val pcOffset = getOffset(cachePc)
-  val trap = cachePc(1, 0).orR // pc misaligned
+  val pcMisaligned = cachePc(1, 0).orR
   val hit = Wire(Bool())
   when (genValid) { // gen前递（优先级高于ICache）
     hit := true.B
     out.bits.inst := genData(pcOffset)
+    out.bits.trap := genPf
+    out.bits.cause := 12.U
   } .elsewhen(cacheValid && cacheTag === pcTag) { // ICache命中
     hit := true.B
     out.bits.inst := cacheData(pcOffset)
+    out.bits.trap := pcMisaligned
+    out.bits.cause := 0.U
   } .otherwise { // miss
     hit := false.B
     out.bits.inst := DontCare
+    out.bits.trap := pcMisaligned
+    out.bits.cause := 0.U
   }
-  out.bits.trap := trap
-  out.valid := valid && !io.flush && (hit || trap)
+  out.valid := valid && !io.flush && (hit || pcMisaligned)
   out.bits.pc := cachePc
 
   // ---------- gen ----------
+  val ppn = Reg(UInt(20.W))
+  val cachePaddr = Cat(ppn, cachePc(11, 0))
   val burstOffset = Reg(UInt((offsetW - 2).W))
-  memReadIO.req := req
-  memReadIO.addr := Cat(getTag(cachePc), getIndex(cachePc), 0.U(offsetW.W))
-  memReadIO.setBurst(blockN)
-  when (!req && valid && !(hit || trap) && !io.flush) {
-    req := true.B
+  when (idle && valid && !(hit || pcMisaligned) && !io.flush) {
+    state := stMmu
     burstOffset := 0.U
   }
-  when (req && memReadIO.resp) {
+  when (mmuIng && mmuIO.hit) {
+    ppn := mmuIO.ppn
+    genPf := mmuIO.pf
+    when (mmuIO.pf) {
+      state := stIdle
+      genValid := true.B
+    } .otherwise {
+      state := stFetch
+    }
+  }
+  when (fetchIng && memReadIO.resp) {
     genData(burstOffset) := memReadIO.data
     burstOffset := burstOffset + 1.U
     when (memReadIO.last) {
-      req := false.B
+      state := stIdle
       genValid := true.B
     }
   }
-  icache.writeIO.en := valid && genValid
+  mmuIO.valid := mmuIng
+  mmuIO.fetch := true.B
+  mmuIO.load := false.B
+  mmuIO.store := false.B
+  mmuIO.vpn := cachePc(31, 12)
+  memReadIO.req := fetchIng
+  memReadIO.addr := Cat(cachePaddr(31, offsetW), 0.U(offsetW.W))
+  memReadIO.setBurst(blockN)
+  icache.writeIO.en := valid && genValid && !genPf
   icache.writeIO.dirty := DontCare
   icache.writeIO.index := pcIndex
   icache.writeIO.tag := pcTag
@@ -107,4 +137,10 @@ class Fetch extends Module {
   }
 
   // TODO: 分支预测
+}
+
+object Fetch {
+  object State extends ChiselEnum {
+    val stIdle, stMmu, stFetch = Value
+  }
 }

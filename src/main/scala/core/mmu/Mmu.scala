@@ -21,10 +21,10 @@ class Mmu extends Module {
     val flush = Input(Bool())
     val fenceVMA = Input(Bool())
 
-    val satp = Input(UInt(32.W))
     val priv = Input(UInt(2.W))
-    val mstatusMPRV = Input(Bool())
+    val satp = Input(UInt(32.W))
     val mstatusMPP = Input(UInt(2.W))
+    val mstatusMPRV = Input(Bool())
     val mstatusSUM = Input(Bool())
     val mstatusMXR = Input(Bool())
   })

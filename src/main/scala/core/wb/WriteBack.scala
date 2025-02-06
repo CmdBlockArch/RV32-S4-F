@@ -27,17 +27,27 @@ class WriteBack extends Module {
     val fenceVMA = Output(Bool())
 
     val priv = Output(UInt(2.W))
-    val mstatusTSR = Output(Bool())
+    val satp = Input(UInt(32.W))
+    val mstatusMPP = Output(UInt(2.W))
+    val mstatusMPRV = Output(Bool())
+    val mstatusSUM = Output(Bool())
+    val mstatusMXR = Output(Bool())
     val mstatusTVM = Output(Bool())
     val mstatusTW = Output(Bool())
+    val mstatusTSR = Output(Bool())
   })
 
   // ---------- WB流水级器件 ----------
   // CSR
   val csr = new CsrRegFile
-  io.mstatusTSR := csr.TSR
+  io.satp := csr.satp
+  io.mstatusMPP := csr.MPP
+  io.mstatusMPRV := csr.MPRV
+  io.mstatusSUM := csr.SUM
+  io.mstatusMXR := csr.MXR
   io.mstatusTVM := csr.TVM
   io.mstatusTW := csr.TW
+  io.mstatusTSR := csr.TSR
 
   // CSR读，master位于Decode
   val csrReadIO = IO(Flipped(new CsrReadIO))
