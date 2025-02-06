@@ -25,7 +25,7 @@ class Ptw extends Module {
 
   val res = Reg(MmuBundle.resReg)
 
-  import Walker.State._
+  import Ptw.State._
   val state = RegInit(stIdle)
   val idle = state === stIdle
   val walk1 = state === stWalk1
@@ -71,7 +71,7 @@ class Ptw extends Module {
   io.valid := hold
 }
 
-object Walker {
+object Ptw {
   object State extends ChiselEnum {
     val stIdle, stWalk1, stWalk0, stHold = Value
   }

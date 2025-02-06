@@ -4,14 +4,15 @@ import chisel3._
 import chisel3.util._
 
 class MmuIO extends Bundle {
-  val req = Output(Bool())
+  val valid = Output(Bool())
   val fetch = Output(Bool())
   val load = Output(Bool())
   val store = Output(Bool())
   val vpn = Output(UInt(20.W))
 
-  val resp = Input(Bool())
+  val hit = Input(Bool())
   val pf = Input(Bool())
+  val cause = Input(UInt(4.W))
   val ppn = Input(UInt(20.W))
 }
 
@@ -50,13 +51,14 @@ class Mmu extends Module {
   ptwIO.req := ptwReq
   ptwIO.ptn := io.satp(19, 0)
   ptwIO.vpn := mmuIO.vpn
-  when (mmuIO.req && !bare && !hit && !io.flush) { ptwReq := true.B }
+  when (mmuIO.valid && !bare && !hit && !io.flush) { ptwReq := true.B }
   when (ptwIO.valid) { ptwReq := false.B }
   tlb.writeIO.value := ptwIO.value
   tlb.writeIO.vpn := mmuIO.vpn
 
   // 翻译结果
-  mmuIO.resp := bare || hit
+  mmuIO.hit := bare || hit
   mmuIO.pf := !bare && (privPF || actPF || flagPF)
+  mmuIO.cause := 12.U(4.W) | Cat(0.U(2.W), mmuIO.store, !mmuIO.fetch)
   mmuIO.ppn := Mux(bare, mmuIO.vpn, resPpn)
 }

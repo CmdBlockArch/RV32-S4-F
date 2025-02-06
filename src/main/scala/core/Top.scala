@@ -13,6 +13,7 @@ import core.wb.{WriteBack, WbDebugOut}
 
 import core.gpr.RegFile
 import core.misc.{MemReadArb, MemWriteArb}
+import core.mmu.{Mmu, Ptw, PtwArb}
 
 import perip.{SimMemRead, SimMemWrite, AxiReadIO, AxiWriteIO}
 
@@ -21,6 +22,10 @@ class Top extends Module {
   val dcache = Module(new DataCache.dcacheFactory.CacheWay)
   val memReadArb = Module(new MemReadArb(3))
   val memWriteArb = Module(new MemWriteArb(2))
+
+  val ptw = Module(new Ptw)
+  val ptwArb = Module(new PtwArb)
+  ptw.io :<>= ptwArb.slave
 
   val fetch = Module(new Fetch)
   val decode = Module(new Decode); decode.in :<>= fetch.out

@@ -9,9 +9,12 @@ import core.gpr.GprFwIO
 import DataCache.{dcacheFactory => dc}
 import core.misc.{MemReadIO, MemWriteIO}
 import core.mem.Mem
+import core.mmu.MmuIO
 import utils.Config._
 
 class MemPreOut extends ExecOut {
+  // mmu
+  val ppn = Output(UInt(20.W))
   // sc
   val sc = Output(Bool())
   // Data Cache
@@ -41,26 +44,43 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
 
-  // MMIO控制信号
-  val inMem = cur.rdVal(31, 28) === "h8".U(4.W)
-  val mmio = WireDefault(cur.mem.orR && !inMem) // 先验：LRSC不会访问MMIO
-
-  // LR&SC
+  // 控制信号
+  val mem = cur.mem.orR
   val lrsc = !cur.mem(3, 2).orR && cur.mem(1, 0).xorR
   val lr = cur.mem === "b0001".U(4.W)
   val sc = cur.mem === "b0010".U(4.W)
+
+  // MMU
+  val mmuIO = IO(new MmuIO)
+  mmuIO.valid := valid && mem
+  mmuIO.fetch := false.B
+  mmuIO.load := cur.mem(3) || lr
+  mmuIO.store := !cur.mem(3) && !lr
+  mmuIO.vpn := cur.rdVal(31, 12)
+  val ppn = mmuIO.ppn
+  out.bits.ppn := ppn
+  val mmuHit = mmuIO.hit
+  val pf = mmuHit && mmuIO.pf
+  val paddrValid = mmuHit && !mmuIO.pf
+
+  // MMIO
+  val inMem = ppn(19, 16) === "h8".U(4.W)
+  val mmio = mem && !inMem // 假设：LRSC不会访问MMIO
+
+  // LR&SC
   val reservedAddr = RegInit(0.U(32.W))
-  when (valid && lr) { reservedAddr := cur.rdVal }
-  when (valid && sc) { reservedAddr := 0.U }
+  when (valid && lr && paddrValid) { reservedAddr := cur.rdVal }
+  when (valid && sc && paddrValid) { reservedAddr := 0.U }
   val scSucc = sc && reservedAddr === cur.rdVal
   val scFail = sc && reservedAddr =/= cur.rdVal
   out.bits.sc := scSucc
-  out.bits.mem := Mux1H(Seq(
+  // 当不需要访存时，无论mmuIO.pf值如何（事实上此时其值无意义），mem值都为0
+  out.bits.mem := Mux(mmuIO.pf, 0.U(4.W), Mux1H(Seq(
     lr -> "b1110".U(4.W),
     scFail -> 0.U(4.W),
     scSucc -> "b0110".U(4.W),
     !lrsc -> Mux(mmio, 0.U(4.W), cur.mem)
-  ))
+  )))
   out.bits.rdVal := Mux(scFail, 1.U(32.W), cur.rdVal)
   out.bits.fwReady := cur.fwReady || sc
 
@@ -76,9 +96,13 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val memWriteIO = IO(new MemWriteIO)
   import MemPre.State._
   val state = RegInit(stIdle)
+  val idle = state === stIdle
+  val hold = state === stHold
   val dataValid = RegInit(false.B)
-  when (state === stIdle) {
-    when (valid && mmio && !flush) {
+  val mmioPpn = Reg(UInt(20.W))
+  when (idle) {
+    when (valid && paddrValid && mmio && !flush) {
+      mmioPpn := ppn
       when (cur.mem(3)) { // load
         state := stRead
       } .otherwise { // store
@@ -96,13 +120,14 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   when (memWriteIO.resp) { state := stHold }
   when (out.fire) { state := stIdle }
   when (flush) { state := stIdle }
+  val mmioAddr = Cat(mmioPpn, cur.rdVal(11, 0))
   memReadIO.req := state === stRead
-  memReadIO.addr := cur.rdVal
+  memReadIO.addr := mmioAddr
   memReadIO.size := cur.mem(1, 0)
   memReadIO.burst := 0.U(2.W) // fixed
   memReadIO.len := 0.U(8.W)
   memWriteIO.req := state === stWrite && !flush
-  memWriteIO.addr := cur.rdVal
+  memWriteIO.addr := mmioAddr
   memWriteIO.size := cur.mem(1, 0)
   memWriteIO.burst := 0.U(2.W) // fixed
   memWriteIO.len := 0.U(8.W)
@@ -111,9 +136,11 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   memWriteIO.strb := Cat(Fill(2, cur.mem(1)),
     cur.mem(1, 0).orR, 1.U(1.W)) << cur.rdVal(1, 0)
   memWriteIO.last := true.B
-  setOutCond(!mmio || state === stHold)
 
-  // out.bits.flush := cur.flush || mmuIO.pf
+  setOutCond(!mem || pf || (mmuHit && inMem) || hold)
+  out.bits.trap := cur.trap || (mem && pf)
+  out.bits.cause := Mux(cur.trap, cur.cause, mmuIO.cause)
+  out.bits.flush := cur.flush || (mem && pf)
 
   // TODO: Dcache冲刷时写回
 
