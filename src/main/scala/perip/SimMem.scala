@@ -40,6 +40,14 @@ class SimMemRead extends Module {
     val arburst = UInt(2.W)
   }
 
+  // 读延迟
+  val delay = 0
+  val counter = if (delay > 0) RegInit(0.U(log2Up(delay).W)) else 0.U(1.W)
+  if (delay > 0) {
+    when (counter =/= delay.U) { counter := counter + 1.U }
+    when (io.arready && io.arvalid) { counter := 0.U }
+  }
+
   // cur：当前正在处理的读请求
   val cur = Reg(new ReqBundle)
   val curValid = RegInit(false.B)
@@ -47,7 +55,7 @@ class SimMemRead extends Module {
   val curLast  = WireDefault(Bool(), curCnt === 0.U)
   val curData  = Wire(UInt(32.W))
   // 将cur接到axi的r返回通道
-  io.rvalid := curValid
+  io.rvalid := curValid && counter === delay.U
   io.rresp := 0.U
   io.rdata := curData
   io.rlast := curLast
@@ -102,6 +110,14 @@ class SimMemWrite extends Module {
     val awburst = Output(UInt(2.W))
   }
 
+  // 写延迟
+  val delay = 0
+  val counter = if (delay > 0) RegInit(0.U(log2Up(delay).W)) else 0.U(1.W)
+  if (delay > 0) {
+    when (counter =/= delay.U) { counter := counter + 1.U }
+    when (io.awvalid && io.awready) { counter := 0.U }
+  }
+
   // cur：当前正在处理的写请求
   val cur = Reg(new ReqBundle)
   val curValid = RegInit(false.B)
@@ -112,7 +128,7 @@ class SimMemWrite extends Module {
   // 接收地址后，传输完成前，可以接收数据
   io.wready := curValid && !curResp
   // b返回通道输出
-  io.bvalid := curResp
+  io.bvalid := curResp && counter === delay.U
   io.bresp := 0.U
   io.bid := cur.awid
 

@@ -16,7 +16,7 @@ class StoreBuffer(size: Int = 16) extends Module {
   val r = RegInit(VecInit(Seq.fill(size){
     val t = Wire(new Bundle {
       val valid = Bool()
-      val addr = UInt(32.W)
+      val addr = UInt(30.W)
       val data = UInt(32.W)
     })
     t := DontCare
@@ -37,7 +37,7 @@ class StoreBuffer(size: Int = 16) extends Module {
     val valid = Output(Bool())
     val data = Output(UInt(32.W))
   })
-  val readValid = VecInit(r.map(t => t.valid && t.addr === readIO.addr))
+  val readValid = VecInit(r.map(t => t.valid && t.addr === readIO.addr(31, 2)))
   readIO.valid := readValid.reduce(_ || _)
   readIO.data := Mux1H(readValid, r.map(_.data))
 
@@ -49,14 +49,14 @@ class StoreBuffer(size: Int = 16) extends Module {
 
     def fire = req && resp
   })
-  val wCover = VecInit(r.map(t => t.valid && t.addr === writeIO.addr))
+  val wCover = VecInit(r.map(t => t.valid && t.addr === writeIO.addr(31, 2)))
   val wCoverEn = wCover.reduce(_ || _)
   val wCoverIdx = Mux1H(wCover, (0 until size).map(_.U))
   writeIO.resp := !full || wCoverEn
   val wIdx = Mux(wCoverEn, wCoverIdx, freeIdx)
   when (writeIO.fire) {
     r(wIdx).valid := true.B
-    r(wIdx).addr := writeIO.addr
+    r(wIdx).addr := writeIO.addr(31, 2)
     r(wIdx).data := writeIO.data
   }
 
@@ -83,7 +83,7 @@ class StoreBuffer(size: Int = 16) extends Module {
     }
   }
   memBwIO.req := state === stStore
-  memBwIO.addr := actAddr
+  memBwIO.addr := Cat(actAddr, 0.U(2.W))
   memBwIO.data(0) := actData
   io.locked := io.lock && idle
 }

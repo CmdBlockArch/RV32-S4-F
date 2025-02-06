@@ -73,7 +73,7 @@ class Top extends Module {
   memPre.flush := wb.io.flush
   dcache.readIO :<>= memPre.dcacheReadIO
   memReadArb.master(1) :<>= memPre.memReadIO
-  memWriteArb.master(0) :<>= memPre.memWriteIO
+  memWriteArb.master(1) :<>= memPre.memWriteIO
   gpr.fwIO(1) :<>= memPre.gprFwIO
   val dMmu = mkMmu(1)
   dMmu.io.flush := false.B
@@ -83,7 +83,7 @@ class Top extends Module {
   mem.flush := false.B
   dcache.writeIO :<>= mem.dcacheWriteIO
   memReadArb.master(2) :<>= mem.memReadIO
-  memWriteArb.master(1) :<>= mem.memWriteIO
+  memWriteArb.master(0) :<>= mem.memWriteIO
   gpr.fwIO(2) :<>= mem.gprFwIO
 
   // wb
