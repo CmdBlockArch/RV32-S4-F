@@ -69,12 +69,13 @@ class SimMemRead extends Module {
     override val functionName = "pmem_read"
     override val ret = UInt(32.W)
     override val clocked = true
-    override val inputNames = Some(Seq("raddr"))
+    override val inputNames = Some(Seq("raddr", "rsize"))
     override val outputName = Some("rdata")
   }
   val dpiReadAddr = WireDefault(UInt(32.W), DontCare)
+  val dpiReadSize = WireDefault(UInt(32.W), DontCare)
   val dpiReadEnable = WireDefault(false.B)
-  curData := PmemRead.callWithEnable(dpiReadEnable, dpiReadAddr)
+  curData := PmemRead.callWithEnable(dpiReadEnable, dpiReadAddr, dpiReadSize)
 
   // 生成下一次burst读取的地址
   val addrNext = WireDefault(UInt(32.W), BurstAddrNext(cur.araddr, cur.arlen, cur.arsize, cur.arburst))
@@ -85,6 +86,7 @@ class SimMemRead extends Module {
     curValid := true.B
     // curData <= PmemRead(reqQueueOut.bits.addr)
     dpiReadAddr := io.araddr
+    dpiReadSize := io.arsize
     dpiReadEnable := true.B
   } .elsewhen (io.rready && io.rvalid) { // 当前返回被接收
     when (curLast) { // 这是最后一个返回，当前请求处理完毕
@@ -94,6 +96,7 @@ class SimMemRead extends Module {
       cur.araddr := addrNext
       // curData <= PmemRead(addrNext)
       dpiReadAddr := addrNext
+      dpiReadSize := cur.arsize
       dpiReadEnable := true.B
     }
   }
@@ -143,13 +146,13 @@ class SimMemWrite extends Module {
   // 写入物理内存DPI-C调用
   object PmemWrite extends DPIClockedVoidFunctionImport {
     override val functionName = "pmem_write"
-    override val inputNames = Some(Seq("waddr", "wdata", "wmask"))
+    override val inputNames = Some(Seq("waddr", "wsize", "wdata", "wmask"))
   }
   // 生成下一次burst写入的地址
   val addrNext = WireDefault(UInt(32.W), BurstAddrNext(cur.awaddr, cur.awlen, cur.awsize, cur.awburst))
   // 收到写入的数据
   when (io.wready && io.wvalid) {
-    PmemWrite.call(cur.awaddr, io.wdata, Cat(0.U(4.W), io.wstrb))
+    PmemWrite.call(cur.awaddr, Cat(0.U(29.W), cur.awsize), io.wdata, Cat(0.U(4.W), io.wstrb))
     when (io.wlast) { // burst请求完成s
       curResp := true.B
     } .otherwise {
