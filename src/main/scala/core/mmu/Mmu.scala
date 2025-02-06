@@ -48,12 +48,18 @@ class Mmu extends Module {
   // TLB缺失，请求PTW
   val ptwIO = IO(MmuBundle.walkerIO)
   val ptwReq = RegInit(false.B)
+  val flushReg = RegInit(false.B)
   ptwIO.req := ptwReq
   ptwIO.ptn := io.satp(19, 0)
   ptwIO.vpn := mmuIO.vpn
   when (mmuIO.valid && !bare && !hit && !io.flush) { ptwReq := true.B }
-  when (ptwIO.valid) { ptwReq := false.B }
+  when (ptwReq && io.flush && !ptwIO.valid) { flushReg := true.B }
+  when (ptwIO.valid) {
+    ptwReq := false.B
+    flushReg := false.B
+  }
   tlb.writeIO.value := ptwIO.value
+  tlb.writeIO.valid := ptwIO.valid && !io.flush && !flushReg
   tlb.writeIO.vpn := mmuIO.vpn
 
   // 翻译结果

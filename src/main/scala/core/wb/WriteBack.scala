@@ -27,7 +27,7 @@ class WriteBack extends Module {
     val fenceVMA = Output(Bool())
 
     val priv = Output(UInt(2.W))
-    val satp = Input(UInt(32.W))
+    val satp = Output(UInt(32.W))
     val mstatusMPP = Output(UInt(2.W))
     val mstatusMPRV = Output(Bool())
     val mstatusSUM = Output(Bool())

@@ -20,7 +20,7 @@ import perip.{SimMemRead, SimMemWrite, AxiReadIO, AxiWriteIO}
 class Top extends Module {
   val gpr = Module(new RegFile)
   val dcache = Module(new DataCache.dcacheFactory.CacheWay)
-  val memReadArb = Module(new MemReadArb(3))
+  val memReadArb = Module(new MemReadArb(4))
   val memWriteArb = Module(new MemWriteArb(2))
 
   val fetch = Module(new Fetch)
@@ -31,6 +31,7 @@ class Top extends Module {
   val wb = Module(new WriteBack); wb.in :<>= mem.out
 
   val ptw = Module(new Ptw)
+  memReadArb.master(3) :<>= ptw.memReadIO
   val ptwArb = Module(new PtwArb)
   ptw.io :<>= ptwArb.slave
   def mkMmu(i: Int) = {
@@ -49,10 +50,10 @@ class Top extends Module {
   // fetch
   fetch.io.flush := exec.io.jmp || wb.io.flush
   fetch.io.dnpc := Mux(wb.io.flush, wb.io.dnpc, exec.io.dnpc)
-  fetch.io.fenceI := wb.io.fenceI
+  fetch.io.fenceI := wb.io.fenceI || wb.io.fenceVMA
   memReadArb.master(0) :<>= fetch.memReadIO
   val iMmu = mkMmu(0)
-  iMmu.io.flush := false.B // TODO: SFENCE.VMA
+  iMmu.io.flush := wb.io.flush
   iMmu.mmuIO :<>= fetch.mmuIO
 
   // decode
