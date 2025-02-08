@@ -111,6 +111,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val csrWen = cur.zicsr && cur.csrWen && !cur.trap
   out.bits.csrWen := csrWen
   out.bits.data := Mux(csrWen, csrData, cur.src2)
+  val satpWrite = cur.csrAddr === "h180".U && csrWen
 
   setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
 
@@ -140,8 +141,8 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.mem := Mux(trap, 0.U(4.W), cur.mem)
   out.bits.amoFunc := cur.amoFunc
   out.bits.ret := Mux(cur.trap, 0.U(2.W), cur.ret)
-  out.bits.fenceI := cur.fenceI && !cur.trap
-  out.bits.fenceVMA := cur.fenceVMA && !cur.trap
+  out.bits.fenceI := (cur.fenceI || satpWrite) && !cur.trap
+  out.bits.fenceVMA := (cur.fenceVMA || satpWrite) && !cur.trap
   out.bits.pc := cur.pc
   out.bits.trap := trap
   out.bits.cause := Mux(cur.trap, cur.cause, Mux(cur.mem(3), 4.U, 6.U))

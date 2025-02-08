@@ -134,7 +134,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   // store buffer写入
   sb.writeIO.req := storeValid
   sb.writeIO.addr := paddr
-  sb.writeIO.data := storeVal
+  sb.writeIO.data := Mux(store, storeVal, amoVal)
 
   // 阶段完成条件
   setOutCond(!mem || (dcHit && (!(store || amo) || sb.writeIO.resp)))
