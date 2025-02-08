@@ -41,7 +41,7 @@ class SimMemRead extends Module {
   }
 
   // 读延迟
-  val delay = 0
+  val delay = 0 // 31
   val counter = if (delay > 0) RegInit(0.U(log2Up(delay).W)) else 0.U(1.W)
   if (delay > 0) {
     when (counter =/= delay.U) { counter := counter + 1.U }
@@ -60,9 +60,8 @@ class SimMemRead extends Module {
   io.rdata := curData
   io.rlast := curLast
   io.rid := cur.arid
-  // 当前没有正在处理的读请求，或者当前请求已经处理完毕
-  // 则可以接收下一个请求
-  io.arready := !curValid || (io.rready && curLast)
+  // 当前没有正在处理的读请求，则可以接收下一个请求
+  io.arready := !curValid
 
   // 读取物理内存DPI-C调用
   object PmemRead extends DPINonVoidFunctionImport[UInt] {
@@ -114,7 +113,7 @@ class SimMemWrite extends Module {
   }
 
   // 写延迟
-  val delay = 0
+  val delay = 0 // 31
   val counter = if (delay > 0) RegInit(0.U(log2Up(delay).W)) else 0.U(1.W)
   if (delay > 0) {
     when (counter =/= delay.U) { counter := counter + 1.U }
@@ -125,9 +124,8 @@ class SimMemWrite extends Module {
   val cur = Reg(new ReqBundle)
   val curValid = RegInit(false.B)
   val curResp = RegInit(false.B)
-  // 当前没有正在处理的写请求，或者当前请求已经处理完毕
-  // 则可以接收下一个请求
-  io.awready := !curValid || (curResp && io.bready)
+  // 当前没有正在处理的写请求，则可以接收下一个请求
+  io.awready := !curValid
   // 接收地址后，传输完成前，可以接收数据
   io.wready := curValid && !curResp
   // b返回通道输出
