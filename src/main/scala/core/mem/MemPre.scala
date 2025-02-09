@@ -147,8 +147,6 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.cause := Mux(cur.trap, cur.cause, mmuIO.cause)
   out.bits.flush := cur.flush || (mem && pf)
 
-  // TODO: Dcache冲刷时写回
-
   if (debug) {
     out.bits.skip.get := cur.skip.get || mmio
   }

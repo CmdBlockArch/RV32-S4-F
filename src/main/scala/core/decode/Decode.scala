@@ -105,6 +105,14 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   out.bits.mem := Mux(cur.trap, 0.U, cs(MemField))
   out.bits.amoFunc := Cat(inst(31, 29), inst(27))
 
+  // io
+  val io = IO(new Bundle {
+    val priv = Input(UInt(2.W))
+    val mstatusTVM = Input(Bool())
+    val mstatusTW = Input(Bool())
+    val mstatusTSR = Input(Bool())
+  })
+
   // CSR
   val zicsr = cs(ZicsrEnField) && !cur.trap
   out.bits.zicsr := zicsr
@@ -116,15 +124,10 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   csrReadIO.addr := csrAddr
   out.bits.csrSrc := csrReadIO.data
   val csrWriteRO = csrAddr(11, 10).andR && csrWen
-  val csrErr = zicsr && (csrWriteRO || csrReadIO.err)
-
-  // io
-  val io = IO(new Bundle {
-    val priv = Input(UInt(2.W))
-    val mstatusTVM = Input(Bool())
-    val mstatusTW = Input(Bool())
-    val mstatusTSR = Input(Bool())
-  })
+  val csrPriv = csrAddr(9, 8)
+  val csrAddrErr = csrWriteRO || csrReadIO.err
+  val csrPrivErr = (io.priv === Priv.U && csrPriv.orR) || (io.priv === Priv.S && csrPriv(1))
+  val csrErr = zicsr && (csrAddrErr || csrPrivErr)
 
   // ret
   val ret = Mux(cur.trap, 0.U, cs(RetField))
