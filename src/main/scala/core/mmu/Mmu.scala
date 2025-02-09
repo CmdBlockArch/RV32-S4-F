@@ -41,8 +41,8 @@ class Mmu extends Module {
   val res = tlb.readIO
   val resPpn = Mux(res.mega, Cat(res.ppn(19, 10), mmuIO.vpn(9, 0)), res.ppn)
   val privPF = Mux(priv(0), res.user && (mmuIO.fetch || !io.mstatusSUM), !res.user)
-  val actPF = (mmuIO.fetch && res.exec) || (mmuIO.store && res.write) ||
-    (mmuIO.load && (res.read || (res.exec && io.mstatusMXR)))
+  val actPF = !((mmuIO.fetch && res.exec) || (mmuIO.store && res.write) ||
+    (mmuIO.load && (res.read || (res.exec && io.mstatusMXR))))
   val flagPF = !res.access || (!res.dirty && mmuIO.store)
 
   // TLB缺失，请求PTW
