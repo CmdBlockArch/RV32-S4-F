@@ -2,6 +2,7 @@ package core.wb
 
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.decode.{TruthTable, decoder}
 import core.mem.MemOut
 import core.gpr.GprWriteIO
 import core.csr._
@@ -91,12 +92,15 @@ class WriteBack extends Module {
   io.fenceI := cur.valid && cur.fenceI
   io.fenceVMA := cur.valid && cur.fenceVMA
 
+  val tval = Mux1H(decoder(cur.cause, WriteBack.tvalTruthTable),
+    Seq(0.U(32.W), cur.pc, cur.vaddr))
+
   // trap
   when (cur.valid && cur.trap) {
     when (trapToS) { // trap to S-Mode
       csr.scause := cur.cause
       csr.sepc := cur.pc
-      csr.stval := 0.U // TODO: stval
+      csr.stval := tval
       csr.SPIE := csr.SIE
       csr.SIE := false.B
       csr.SPP := priv
@@ -104,7 +108,7 @@ class WriteBack extends Module {
     } .otherwise { // trap to M-Mode
       csr.mcause := cur.cause
       csr.mepc := cur.pc
-      csr.mtval := 0.U // TODO: mtval
+      csr.mtval := tval
       csr.MPIE := csr.MIE
       csr.MIE := false.B
       csr.MPP := priv
@@ -145,4 +149,25 @@ class WriteBack extends Module {
     debugOut.get.ebreak := commit.get && trap.get && cause.get === 3.U
     debugOut.get.skip := skip.get
   }
+}
+
+object WriteBack {
+  val tvalTruthTable = TruthTable(
+    Map(
+      BitPat("b0000") -> BitPat("b010"),
+      BitPat("b0001") -> BitPat("b010"),
+      BitPat("b0010") -> BitPat("b001"),
+      BitPat("b0011") -> BitPat("b010"),
+      BitPat("b0100") -> BitPat("b100"),
+      BitPat("b0101") -> BitPat("b100"),
+      BitPat("b0110") -> BitPat("b100"),
+      BitPat("b0111") -> BitPat("b100"),
+      BitPat("b1000") -> BitPat("b001"),
+      BitPat("b1001") -> BitPat("b001"),
+      BitPat("b1011") -> BitPat("b001"),
+      BitPat("b1100") -> BitPat("b010"),
+      BitPat("b1101") -> BitPat("b100"),
+      BitPat("b1111") -> BitPat("b100"),
+    ), BitPat.dontCare(3)
+  )
 }

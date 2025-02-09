@@ -17,6 +17,7 @@ class MemOut extends Bundle {
   * 使得这些信号的valid时序路径更短
   * */
   val valid = Output(Bool())
+  val vaddr = Output(UInt(32.W))
   // GPR
   val rd = Output(UInt(5.W))
   val rdVal = Output(UInt(32.W))
@@ -149,6 +150,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
 
   // 输出
   out.bits.valid := valid
+  out.bits.vaddr := cur.rdVal
   out.bits.rd := cur.rd
   out.bits.rdVal := rdVal
   out.bits.csrWen := cur.csrWen

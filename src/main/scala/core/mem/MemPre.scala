@@ -77,7 +77,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
     scSucc -> "b0110".U(4.W),
     !lrsc -> Mux(mmio, 0.U(4.W), cur.mem)
   )))
-  out.bits.rdVal := Mux(scFail, 1.U(32.W), cur.rdVal)
+  out.bits.rdVal := Mux(scFail && !pf, 1.U(32.W), cur.rdVal)
   out.bits.fwReady := cur.fwReady || sc
 
   // 前递
