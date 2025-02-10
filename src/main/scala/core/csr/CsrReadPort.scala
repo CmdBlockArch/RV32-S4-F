@@ -7,26 +7,22 @@ import utils.BitPat1H
 
 class CsrReadPort(r: CsrRegFile) {
   val readMap: Seq[(UInt, UInt)] = Seq(
-    "h100".U(12.W) -> // sstatus
-      Cat(0.U(12.W), r.MXR, r.SUM, 0.U(9.W), r.SPP, 0.U(2.W), r.SPIE, 0.U(3.W), r.SIE, 0.B),
-    "h104".U(12.W) -> Cat(0.U(22.W), r.SEIE, 0.U(3.W), r.STIE, 0.U(3.W), r.SSIE, 0.B), // sie
+    "h100".U(12.W) -> r.sstatus,
+    "h104".U(12.W) -> r.sie,
     "h105".U(12.W) -> r.stvec,
     "h106".U(12.W) -> 0.U(32.W), // scounteren
     "h140".U(12.W) -> r.sscratch,
     "h141".U(12.W) -> r.sepc,
     "h142".U(12.W) -> r.scause,
     "h143".U(12.W) -> r.stval,
-    "h144".U(12.W) -> Cat(0.U(22.W), r.SEIP, 0.U(3.W), r.STIP, 0.U(3.W), r.SSIP, 0.B), // sip
+    "h144".U(12.W) -> r.sip,
     "h180".U(12.W) -> r.satp,
 
-    "h300".U(12.W) -> // mstatus
-      Cat(0.U(9.W), r.TSR, r.TW, r.TVM, r.MXR, r.SUM, r.MPRV, 0.U(4.W), r.MPP, 0.U(2.W), r.SPP,
-        r.MPIE, 0.B, r.SPIE, 0.B, r.MIE, 0.B, r.SIE, 0.B),
+    "h300".U(12.W) -> r.mstatus,
     "h301".U(12.W) -> "h40141111".U(32.W), // misa: RV32 IE MA SU
     "h302".U(12.W) -> r.medeleg,
     "h303".U(12.W) -> r.mideleg,
-    "h304".U(12.W) -> // mie
-      Cat(0.U(20.W), r.MEIE, 0.B, r.SEIE, 0.B, r.MTIE, 0.B, r.STIE, 0.B, r.MSIE, 0.B, r.SSIE, 0.B),
+    "h304".U(12.W) -> r.mie,
     "h305".U(12.W) -> r.mtvec,
     "h310".U(12.W) -> 0.U(32.W), // mstatush
     "h312".U(12.W) -> r.medelegh,
@@ -34,8 +30,7 @@ class CsrReadPort(r: CsrRegFile) {
     "h341".U(12.W) -> r.mepc,
     "h342".U(12.W) -> r.mcause,
     "h343".U(12.W) -> r.mtval,
-    "h344".U(12.W) -> // mip
-      Cat(0.U(20.W), r.MEIP, 0.B, r.SEIP, 0.B, r.MTIP, 0.B, r.STIP, 0.B, r.MSIP, 0.B, r.SSIP, 0.B),
+    "h344".U(12.W) -> r.mip,
 
     "hc00".U(12.W) -> r.counter(31, 0), // cycle
     "hc01".U(12.W) -> r.counter(31, 0), // time

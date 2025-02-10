@@ -15,6 +15,7 @@ class WbDebugOut extends Bundle {
   val dnpc = Output(UInt(32.W))
   val ebreak = Output(Bool())
   val skip = Output(Bool())
+  val csr = Output(new CsrDebugBundle)
 }
 
 class WriteBack extends Module {
@@ -41,6 +42,7 @@ class WriteBack extends Module {
   // ---------- WB流水级器件 ----------
   // CSR
   val csr = new CsrRegFile
+  csr.counter := csr.counter + 1.U
   io.satp := csr.satp
   io.mstatusMPP := csr.MPP
   io.mstatusMPRV := csr.MPRV
@@ -60,7 +62,6 @@ class WriteBack extends Module {
   // 特权级
   val priv = RegInit(Priv.M)
   val privM = priv(1)
-  val privS = priv === Priv.S
   io.priv := priv
 
   // ---------- WB动作逻辑 ----------
@@ -79,7 +80,7 @@ class WriteBack extends Module {
   // flush
   io.flush := cur.valid && cur.flush
   val medeleg = csr.medeleg(15, 0)
-  val trapToS = privS && medeleg(cur.cause)
+  val trapToS = !privM && medeleg(cur.cause)
   val trapAddr = Mux(trapToS, csr.stvec, csr.mtvec)
   io.dnpc := Mux1H(Seq(
     cur.mret -> csr.mepc,
@@ -148,6 +149,7 @@ class WriteBack extends Module {
     debugOut.get.dnpc := dnpc.get
     debugOut.get.ebreak := commit.get && trap.get && cause.get === 3.U
     debugOut.get.skip := skip.get
+    debugOut.get.csr := csr.debugOut
   }
 }
 

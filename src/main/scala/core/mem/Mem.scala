@@ -8,6 +8,7 @@ import utils.Config._
 import core.gpr.GprFwIO
 import core.misc.{MemReadIO, MemWriteIO}
 import DataCache.{dcacheFactory => dc}
+import core.csr.Priv
 
 class MemOut extends Bundle {
   /*
@@ -40,8 +41,8 @@ class MemOut extends Bundle {
   val skip = DebugOutput(Bool())
 
   def retEn = ret.orR
-  def mret = ret === "b11".U(2.W)
-  def sret = ret === "b10".U(2.W)
+  def mret = ret === Priv.M
+  def sret = ret === Priv.S
 }
 
 class Mem extends PiplineModule(new MemPreOut, new MemOut) {

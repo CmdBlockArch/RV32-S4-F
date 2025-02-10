@@ -1,6 +1,7 @@
 package core.csr
 
 import chisel3._
+import chisel3.util._
 
 class CsrRegFile {
   // mstatus(sstatus)
@@ -50,4 +51,31 @@ class CsrRegFile {
   val stval = Reg(UInt(32.W))
 
   val counter = RegInit(0.U(64.W))
+
+  def sstatus = Cat(0.U(12.W), MXR, SUM,0.U(9.W),
+    SPP, 0.U(2.W), SPIE, 0.U(3.W), SIE, 0.B)
+  def sie = Cat(0.U(22.W), SEIE, 0.U(3.W), STIE, 0.U(3.W), SSIE, 0.B)
+  def sip = Cat(0.U(22.W), SEIP, 0.U(3.W), STIP, 0.U(3.W), SSIP, 0.B)
+
+  def mstatus = Cat(0.U(9.W), TSR, TW, TVM, MXR, SUM, MPRV, 0.U(4.W),
+    MPP, 0.U(2.W), SPP, MPIE, 0.B, SPIE, 0.B, MIE, 0.B, SIE, 0.B)
+  def mie = Cat(0.U(20.W), MEIE, 0.B, SEIE, 0.B, MTIE, 0.B, STIE, 0.B, MSIE, 0.B, SSIE, 0.B)
+  def mip = Cat(0.U(20.W), MEIP, 0.B, SEIP, 0.B, MTIP, 0.B, STIP, 0.B, MSIP, 0.B, SSIP, 0.B)
+
+  def debugOut = {
+    val t = Wire(new CsrDebugBundle)
+    t.stvec := stvec
+    t.sscratch := sscratch
+    t.sepc := sepc
+    t.scause := scause
+    t.stval := stval
+    t.satp := satp
+    t.mstatus := mstatus
+    t.mtvec := mtvec
+    t.mscratch := mscratch
+    t.mepc := mepc
+    t.mcause := mcause
+    t.mtval := mtval
+    t
+  }
 }
