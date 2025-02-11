@@ -3,7 +3,7 @@ package core.misc
 import chisel3._
 import utils.SRam
 
-class CacheWayFactory(val offsetW: Int = 5, val indexW: Int = 3) {
+class CacheWayFactory(val offsetW: Int = 4, val indexW: Int = 5) {
   // Tag | Index | Offset
   val tagW = 32 - offsetW - indexW // tag宽度
 

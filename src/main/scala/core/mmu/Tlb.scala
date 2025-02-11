@@ -24,8 +24,12 @@ class Tlb(val indexW: Int = 4) extends Module {
   readIO.value := Mux1H(hitSel, lines).value
   readIO.valid := hitSel.reduce(_ || _)
 
+  val randomIndex = Reg(UInt(indexW.W)); randomIndex := randomIndex + 1.U
+  val freeIndex = lines.indexWhere(!_.valid)
+  val full = lines.map(_.valid).reduce(_ && _)
+  val evictIndex = Mux(full, randomIndex, freeIndex)
+
   val writeIO = IO(Flipped(MmuBundle.tlbWrite))
-  val evictIndex = Reg(UInt(indexW.W)); evictIndex := evictIndex + 1.U
   (0 until lineN).zip(lines).foreach { case (i, line) =>
     when (writeIO.valid && i.U === evictIndex) {
       line.value := writeIO.value

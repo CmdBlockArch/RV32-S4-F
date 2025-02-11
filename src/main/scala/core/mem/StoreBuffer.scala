@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import core.misc.{MemWriteIO, MemBurstWriteHelper}
 
-class StoreBuffer(size: Int = 16) extends Module {
+class StoreBuffer(size: Int = 32) extends Module {
   val io = IO(new Bundle {
     val lock = Input(Bool())
     val locked = Output(Bool())

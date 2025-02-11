@@ -46,9 +46,15 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val lr = cur.mem === "b0001".U(4.W)
   val sc = cur.mem === "b0010".U(4.W)
 
+  // 状态
+  import MemPre.State._
+  val state = RegInit(stIdle)
+  val idle = state === stIdle
+  val hold = state === stHold
+
   // MMU
   val mmuIO = IO(new MmuIO)
-  mmuIO.valid := valid && mem && !flush
+  mmuIO.valid := valid && mem && !hold && !flush
   mmuIO.fetch := false.B
   mmuIO.load := cur.mem(3) || lr
   mmuIO.store := !cur.mem(3) && !lr
@@ -90,10 +96,6 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   // MMIO访存状态机
   val memReadIO = IO(new MemReadIO)
   val memWriteIO = IO(new MemWriteIO)
-  import MemPre.State._
-  val state = RegInit(stIdle)
-  val idle = state === stIdle
-  val hold = state === stHold
   val dataValid = RegInit(false.B)
   val mmioPpn = Reg(UInt(20.W))
   when (idle) {
