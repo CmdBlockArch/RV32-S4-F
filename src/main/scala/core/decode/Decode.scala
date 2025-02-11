@@ -153,7 +153,7 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val invInst = cs(InvInstField) || csrErr || retErr || fenceVMAErr || wfiErr
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst || ecall || ebreak
-  out.bits.cause := Mux(cur.trap, cur.cause, Mux1H(Seq(
+  out.bits.cause := Mux(cur.trap, 12.U, Mux1H(Seq(
     invInst -> 2.U,
     ecall -> (8.U(4.W) | io.priv),
     ebreak -> 3.U,

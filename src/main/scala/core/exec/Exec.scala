@@ -61,8 +61,11 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   bru.io.src2 := cur.src2
   bru.io.func := cur.func
   val brJmp = bru.io.jmp
-  io.jmp := valid && (cur.jal || cur.jalr || (cur.branch && brJmp))
-  io.dnpc := Mux(cur.jalr, cur.src1, cur.pc) + Mux(cur.branch && !brJmp, 4.U(32.W), cur.imm)
+  val jmp = valid && (cur.jal || cur.jalr || (cur.branch && brJmp))
+  val dnpc = Mux(cur.jalr, cur.src1, cur.pc) + Mux(cur.branch && !brJmp, 4.U(32.W), cur.imm)
+  io.jmp := jmp
+  io.dnpc := dnpc
+  val instMisaligned = jmp && dnpc(1, 0).orR
 
   // 乘除法
   val mulFunc = cur.aluFunc.mulFunc
@@ -128,8 +131,9 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.fwReady := cur.fwReady || cur.mul || cur.zicsr
 
   // mem
+  val mem = cur.mem.orR
   val misaligned = Wire(Bool())
-  misaligned := cur.mem.orR && Mux1H(Seq(
+  misaligned := mem && Mux1H(Seq(
     (cur.mem(1) || cur.mem(3, 2) === 0.U) -> aluRes(1, 0).orR, // 4 bytes
     (cur.mem(0) && cur.mem(3, 2).orR) -> aluRes(0), // 2 bytes
     (cur.mem(1, 0) === 0.U) -> false.B, // 1 byte
@@ -144,8 +148,8 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.fenceI := (cur.fenceI || satpWrite) && !cur.trap
   out.bits.fenceVMA := (cur.fenceVMA || satpWrite) && !cur.trap
   out.bits.pc := cur.pc
-  out.bits.trap := trap
-  out.bits.cause := Mux(cur.trap, cur.cause, Mux(cur.mem(3), 4.U, 6.U))
+  out.bits.trap := trap || instMisaligned
+  out.bits.cause := Mux(cur.trap, cur.cause, Mux(mem, Mux(cur.mem(3), 4.U, 6.U), 0.U))
   out.bits.flush := out.bits.flushEn
 
   if (debug) {

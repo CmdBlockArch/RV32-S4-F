@@ -11,7 +11,7 @@ class FetchOut extends Bundle {
   val inst = UInt(32.W)
 
   val trap = Bool()
-  val cause = UInt(4.W)
+  // val cause = UInt(4.W) // only 12 (page fault)
 }
 
 class Fetch extends Module {
@@ -70,39 +70,36 @@ class Fetch extends Module {
   val pcTag = getTag(cachePc)
   val pcIndex = getIndex(cachePc)
   val pcOffset = getOffset(cachePc)
-  val pcMisaligned = cachePc(1, 0).orR
   val hit = Wire(Bool())
   when (genValid) { // gen前递（优先级高于ICache）
     hit := true.B
     out.bits.inst := genData(pcOffset)
     out.bits.trap := genPf
-    out.bits.cause := 12.U
   } .elsewhen(cacheValid && cacheTag === pcTag) { // ICache命中
     hit := true.B
     out.bits.inst := cacheData(pcOffset)
-    out.bits.trap := pcMisaligned
-    out.bits.cause := 0.U
+    out.bits.trap := false.B
   } .otherwise { // miss
     hit := false.B
     out.bits.inst := DontCare
-    out.bits.trap := pcMisaligned
-    out.bits.cause := 0.U
+    out.bits.trap := false.B
   }
-  out.valid := valid && !io.flush && (hit || pcMisaligned)
+  out.valid := valid && !io.flush && hit
   out.bits.pc := cachePc
 
   // ---------- gen ----------
   val ppn = Reg(UInt(20.W))
   val cachePaddr = Cat(ppn, cachePc(11, 0))
   val burstOffset = Reg(UInt((offsetW - 2).W))
-  when (idle && valid && !(hit || pcMisaligned) && !io.flush) {
+  val mmuPf = mmuIO.pf || (mmuIO.ppn(19, 16) =/= "h8".U(4.W))
+  when (idle && valid && !hit && !io.flush) {
     state := stMmu
     burstOffset := 0.U
   }
   when (mmuIng && mmuIO.hit) {
     ppn := mmuIO.ppn
-    genPf := mmuIO.pf
-    when (mmuIO.pf) {
+    genPf := mmuPf
+    when (mmuPf) {
       state := stIdle
       genValid := true.B
     } .otherwise {
