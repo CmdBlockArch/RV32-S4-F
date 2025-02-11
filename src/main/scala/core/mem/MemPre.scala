@@ -25,7 +25,7 @@ class MemPreOut extends ExecOut {
 
 object MemPre {
   object State extends ChiselEnum {
-    val stIdle, stRead, stWrite, stHold = Value
+    val stIdle, stRead, stWrite, stHold, stPf = Value
   }
 }
 
@@ -51,6 +51,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val state = RegInit(stIdle)
   val idle = state === stIdle
   val hold = state === stHold
+  val pfLag = state === stPf
 
   // MMU
   val mmuIO = IO(new MmuIO)
@@ -62,8 +63,9 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val ppn = mmuIO.ppn
   out.bits.ppn := ppn
   val mmuHit = mmuIO.hit
-  val pf = mmuHit && mmuIO.pf
-  val paddrValid = mmuHit && !mmuIO.pf
+  val mmuPf = mmuIO.pf
+  val pf = mmuHit && mmuPf
+  val paddrValid = mmuHit && !mmuPf
 
   // MMIO
   val inMem = ppn(19, 16) === "h8".U(4.W)
@@ -76,8 +78,8 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   val scSucc = sc && reservedAddr === cur.rdVal
   val scFail = sc && reservedAddr =/= cur.rdVal
   out.bits.sc := scSucc
-  // 当不需要访存时，无论mmuIO.pf值如何（事实上此时其值无意义），mem值都为0
-  out.bits.mem := Mux(mmuIO.pf, 0.U(4.W), Mux1H(Seq(
+  // 当不需要访存时，无论mmuPf值如何（事实上此时其值无意义），mem值都为0
+  out.bits.mem := Mux(mmuPf, 0.U(4.W), Mux1H(Seq(
     lr -> "b1110".U(4.W),
     scFail -> 0.U(4.W),
     scSucc -> "b0110".U(4.W),
@@ -107,6 +109,9 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
         state := stWrite
         dataValid := true.B
       }
+    }
+    when (valid && mmuHit && mmuPf && mmio && !flush) {
+      state := stPf
     }
   }
   when (memReadIO.resp) {
@@ -141,13 +146,13 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   })
   val fenceFinish = !cur.fenceI || io.sbEmpty // 等待StoreBuffer全部写回
 
-  val memFinish = !mem || pf || (mmuHit && inMem) || hold
+  val memFinish = !mem || (mmuHit && inMem) || hold || pfLag
   setOutCond(memFinish && fenceFinish)
-  val trap = cur.trap || (mem && pf)
+  val trap = cur.trap || (mem && pf) || pfLag
   out.bits.trap := trap
   out.bits.rd := Mux(trap, 0.U, cur.rd)
   out.bits.cause := Mux(cur.trap, cur.cause, mmuIO.cause)
-  out.bits.flush := cur.flush || (mem && pf)
+  out.bits.flush := cur.flush || (mem && pf) || pfLag
 
   if (debug) {
     out.bits.skip.get := cur.skip.get || mmio

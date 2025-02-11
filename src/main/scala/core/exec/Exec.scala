@@ -116,7 +116,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.data := Mux(csrWen, csrData, cur.src2)
   val satpWrite = cur.csrAddr === "h180".U && csrWen
 
-  setOutCond(cur.trap || Mux(cur.mul, Mux(mulFuncMul, mulValValid, divValValid), true.B))
+  setOutCond(cur.trap || !cur.mul || Mux(mulFuncMul, mulValValid, divValValid))
 
   // rd
   val atomic = !cur.mem(3, 2).orR && cur.mem(1, 0).orR

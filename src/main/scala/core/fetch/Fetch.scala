@@ -38,7 +38,7 @@ class Fetch extends Module {
 
   import Fetch.State._
   val state = RegInit(stIdle)
-  val idle = state === stIdle
+  val idle = state(1)
   val mmuIng = state === stMmu
   val fetchIng = state === stFetch
 
@@ -136,7 +136,9 @@ class Fetch extends Module {
 }
 
 object Fetch {
-  object State extends ChiselEnum {
-    val stIdle, stMmu, stFetch = Value
+  object State {
+    val stIdle  = "b10".U
+    val stMmu   = "b00".U
+    val stFetch = "b01".U
   }
 }
