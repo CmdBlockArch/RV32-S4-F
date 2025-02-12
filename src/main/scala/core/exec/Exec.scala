@@ -25,12 +25,12 @@ class ExecOut extends Bundle {
   val fenceVMA = Output(Bool())
   // 异常处理
   val pc = Output(UInt(32.W))
+  val dnpc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
   val flush = Output(Bool())
   // 调试
   val inst = DebugOutput(UInt(32.W))
-  val dnpc = DebugOutput(UInt(32.W))
   val skip = DebugOutput(Bool())
 
   def flushEn = csrWen || ret.orR || fenceI || trap
@@ -67,6 +67,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val dnpcTaken = Mux(cur.jalr, cur.src1, cur.pc) + cur.imm
   val dnpc = Mux(jmp, dnpcTaken, snpc)
   val instMisaligned = dnpc(1, 0).orR
+  out.bits.dnpc := dnpc
 
   // 分支预测失败
   io.jmp := valid && (dnpc(31, 2) =/= cur.dnpc(31, 2))
@@ -178,7 +179,6 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
 
   if (debug) {
     out.bits.inst.get := cur.inst.get
-    out.bits.dnpc.get := dnpc
     out.bits.skip.get := cur.skip.get
   }
 }

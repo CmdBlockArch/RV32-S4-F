@@ -139,7 +139,7 @@ class WriteBack extends Module {
   val trap = DebugRegNext(cur.trap)
   val cause = DebugRegNext(cur.cause)
   val inst = DebugRegNext(cur.inst)
-  val dnpc = if (debug) Some(RegNext(Mux(io.flush, io.dnpc, cur.dnpc.get), resetVec)) else None
+  val dnpc = if (debug) Some(RegNext(Mux(io.flush, io.dnpc, cur.dnpc), resetVec)) else None
   val skip = DebugRegNext(cur.skip)
   val debugOut = DebugIO(new WbDebugOut)
   if (debug) {

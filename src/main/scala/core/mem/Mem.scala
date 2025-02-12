@@ -32,12 +32,12 @@ class MemOut extends Bundle {
   val fenceVMA = Output(Bool())
   // 异常
   val pc = Output(UInt(32.W))
+  val dnpc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
   val flush = Output(Bool())
   // 调试
   val inst = DebugOutput(UInt(32.W))
-  val dnpc = DebugOutput(UInt(32.W))
   val skip = DebugOutput(Bool())
 
   def retEn = ret.orR
@@ -161,13 +161,13 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   out.bits.fenceI := cur.fenceI
   out.bits.fenceVMA := cur.fenceVMA
   out.bits.pc := cur.pc
+  out.bits.dnpc := cur.dnpc
   out.bits.trap := cur.trap
   out.bits.cause := cur.cause
   out.bits.flush := cur.flush
 
   if (debug) {
     out.bits.inst.get := cur.inst.get
-    out.bits.dnpc.get := cur.dnpc.get
     out.bits.skip.get := cur.skip.get
   }
 }
