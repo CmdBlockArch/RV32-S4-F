@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import core.decode.DecodeOut
 import core.gpr.GprFwIO
+import core.fetch.Bpu.{factory => bpu}
 import utils.PiplineModule
 import utils.Config._
 
@@ -61,11 +62,34 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   bru.io.src2 := cur.src2
   bru.io.func := cur.func
   val brJmp = bru.io.jmp
-  val jmp = valid && (cur.jal || cur.jalr || (cur.branch && brJmp))
-  val dnpc = Mux(cur.jalr, cur.src1, cur.pc) + Mux(cur.branch && !brJmp, 4.U(32.W), cur.imm)
-  io.jmp := jmp
+  val jmp = cur.jmp || (cur.branch && brJmp)
+  val snpc = WireDefault(cur.pc + 4.U(32.W))
+  val dnpcTaken = Mux(cur.jalr, cur.src1, cur.pc) + cur.imm
+  val dnpc = Mux(jmp, dnpcTaken, snpc)
+  val instMisaligned = dnpc(1, 0).orR
+
+  // 分支预测失败
+  io.jmp := valid && (dnpc(31, 2) =/= cur.dnpc(31, 2))
   io.dnpc := dnpc
-  val instMisaligned = jmp && dnpc(1, 0).orR
+
+  // 分支预测修正
+  val bpuTrainIO = IO(new bpu.TrainIO)
+  val bpuTrainEn = RegInit(false.B)
+  when (in.fire) {
+    bpuTrainEn := !in.bits.trap && (in.bits.branch || in.bits.jmp)
+  } .elsewhen (bpuTrainEn) {
+    bpuTrainEn:= false.B
+  }
+  bpuTrainIO.en := bpuTrainEn
+  bpuTrainIO.pc := cur.pc
+  bpuTrainIO.btb := !cur.rasPop
+  bpuTrainIO.push := cur.rasPush
+  bpuTrainIO.pop := cur.rasPop
+  bpuTrainIO.hit := cur.bpuHit
+  bpuTrainIO.index := cur.bpuIdx
+  bpuTrainIO.jmp := jmp
+  bpuTrainIO.dnpc := dnpcTaken
+  bpuTrainIO.snpc := snpc
 
   // 乘除法
   val mulFunc = cur.aluFunc.mulFunc
@@ -154,7 +178,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
 
   if (debug) {
     out.bits.inst.get := cur.inst.get
-    out.bits.dnpc.get := Mux(io.jmp, io.dnpc, cur.pc + 4.U)
+    out.bits.dnpc.get := dnpc
     out.bits.skip.get := cur.skip.get
   }
 }

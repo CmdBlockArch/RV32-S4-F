@@ -2,24 +2,22 @@ package core
 
 import chisel3._
 import chisel3.experimental.dataview._
-
 import utils.Config._
-
 import core.fetch.Fetch
 import core.decode.Decode
 import core.exec.Exec
-import core.mem.{MemPre, Mem, DataCache}
-import core.wb.{WriteBack, WbDebugOut}
-
+import core.mem.{DataCache, Mem, MemPre}
+import core.wb.{WbDebugOut, WriteBack}
 import core.gpr.RegFile
+import core.fetch.Bpu
 import core.misc.{MemReadArb, MemWriteArb}
 import core.mmu.{Mmu, Ptw, PtwArb}
-
-import perip.{SimMemRead, SimMemWrite, AxiReadIO, AxiWriteIO}
+import perip.{AxiReadIO, AxiWriteIO, SimMemRead, SimMemWrite}
 
 class Top extends Module {
   val gpr = Module(new RegFile)
   val dcache = Module(new DataCache.dcacheFactory.CacheWay)
+  val bpu = Module(new Bpu.factory.BrPred)
   val memReadArb = Module(new MemReadArb(4))
   val memWriteArb = Module(new MemWriteArb(2))
 
@@ -51,6 +49,7 @@ class Top extends Module {
   fetch.io.flush := exec.io.jmp || wb.io.flush
   fetch.io.dnpc := Mux(wb.io.flush, wb.io.dnpc, exec.io.dnpc)
   fetch.io.fenceI := wb.io.fenceI
+  bpu.predIO :<>= fetch.bpuPredIO
   memReadArb.master(0) :<>= fetch.memReadIO
   val iMmu = mkMmu(0)
   iMmu.io.flush := wb.io.flush
@@ -67,6 +66,7 @@ class Top extends Module {
 
   // exec
   exec.flush := wb.io.flush
+  bpu.trainIO :<>= exec.bpuTrainIO
   gpr.fwIO(0) :<>= exec.gprFwIO
 
   // memPre
@@ -90,6 +90,7 @@ class Top extends Module {
   // wb
   gpr.writeIO :<>= wb.gprWriteIO
   dcache.io.flush := wb.io.fenceI
+  bpu.io.flush := wb.io.fenceI
 
   if (debug) { // simMem
     val simMemRead = Module(new SimMemRead)

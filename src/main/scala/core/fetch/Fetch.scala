@@ -5,10 +5,15 @@ import chisel3.util._
 import core.misc.{CacheWayFactory, MemReadIO}
 import core.mmu.MmuIO
 import utils.Config._
+import Bpu.{factory => bpu}
 
 class FetchOut extends Bundle {
   val pc = UInt(32.W)
   val inst = UInt(32.W)
+
+  val bpuHit = Bool()
+  val bpuIdx = UInt(bpu.btbW.W)
+  val dnpc = UInt(32.W)
 
   val trap = Bool()
   // val cause = UInt(4.W) // only 12 (page fault)
@@ -35,6 +40,9 @@ class Fetch extends Module {
   val cacheValid = Reg(Bool())
   val cacheTag = Reg(UInt(tagW.W))
   val cacheData = Reg(dataType)
+  val cacheBpuHit = Reg(Bool())
+  val cacheBpuIdx = Reg(UInt(bpu.btbW.W))
+  val cacheDnpc = Reg(UInt(32.W))
 
   import Fetch.State._
   val state = RegInit(stIdle)
@@ -51,10 +59,14 @@ class Fetch extends Module {
   val ready = (!valid && idle) || (out.ready && out.valid)
 
   // ---------- Cache ----------
+  val bpuPredIO = IO(new bpu.PredIO)
+  bpuPredIO.pc := pc
+  val bpuPredValid = bpuPredIO.hit && bpuPredIO.jmp
+  val predPc = Mux(bpuPredValid, bpuPredIO.dnpc, pc + 4.U)
   when (io.flush) {
     pc := io.dnpc
   } .elsewhen (ready) {
-    pc := pc + 4.U
+    pc := predPc
   }
   icache.readIO.index := getIndex(pc)
 
@@ -65,6 +77,9 @@ class Fetch extends Module {
     cacheValid := icache.readIO.valid
     cacheTag := icache.readIO.tag
     cacheData := icache.readIO.data
+    cacheBpuHit := bpuPredIO.hit
+    cacheBpuIdx := bpuPredIO.index
+    cacheDnpc := predPc
     genValid := false.B
   }
   val pcTag = getTag(cachePc)
@@ -86,6 +101,9 @@ class Fetch extends Module {
   }
   out.valid := valid && !io.flush && hit
   out.bits.pc := cachePc
+  out.bits.bpuHit := cacheBpuHit
+  out.bits.bpuIdx := cacheBpuIdx
+  out.bits.dnpc := cacheDnpc
 
   // ---------- gen ----------
   val ppn = Reg(UInt(20.W))

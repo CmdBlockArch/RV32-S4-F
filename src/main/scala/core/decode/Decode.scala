@@ -5,6 +5,7 @@ import chisel3.util._
 import chisel3.util.experimental.decode.DecodeTable
 import core.csr.CsrReadIO
 import core.fetch.FetchOut
+import core.fetch.Bpu.{factory => bpu}
 import core.gpr.GprReadIO
 import core.csr.Priv
 import utils.PiplineModule
@@ -25,8 +26,10 @@ class DecodeOut extends Bundle {
   val fwReady = Output(Bool()) // rd是否可以直接前递
   // 分支和跳转
   val branch = Output(Bool())
-  val jal = Output(Bool())
+  val jmp = Output(Bool())
   val jalr = Output(Bool())
+  val rasPush = Output(Bool())
+  val rasPop = Output(Bool())
   // 功能单元控制
   val mul = Output(Bool())
   val mem = Output(UInt(4.W))
@@ -44,6 +47,10 @@ class DecodeOut extends Bundle {
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
   val cause = Output(UInt(4.W))
+  // 分支预测
+  val bpuHit = Output(Bool())
+  val bpuIdx = Output(UInt(bpu.btbW.W))
+  val dnpc = Output(UInt(32.W))
   // 调试
   val inst = DebugOutput(UInt(32.W))
   val skip = DebugOutput(Bool())
@@ -96,9 +103,16 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
 
   // 分支和跳转
   val jmpFlag = Mux(cur.trap, 0.U(3.W), cs(JmpField))
-  out.bits.jal := jmpFlag(0)
-  out.bits.jalr := jmpFlag(1)
+  val jal = jmpFlag(0)
+  val jalr = jmpFlag(1)
+  out.bits.jmp := jal || jalr
+  out.bits.jalr := jalr
   out.bits.branch := jmpFlag(2)
+  val rdLink = rd === 1.U || rd === 5.U
+  val rs1Link = rs1 === 1.U || rs1 === 5.U
+  val rders1 = rd === rs1
+  out.bits.rasPush := rdLink && (jal || jalr)
+  out.bits.rasPop := jalr && rs1Link && !rders1
 
   // 功能单元控制
   out.bits.mul := cs(MulField) && !cur.trap
@@ -158,6 +172,11 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
     ecall -> (8.U(4.W) | io.priv),
     ebreak -> 3.U,
   )))
+
+  // 分支预测
+  out.bits.bpuHit := cur.bpuHit
+  out.bits.bpuIdx := cur.bpuIdx
+  out.bits.dnpc := cur.dnpc
 
   if (debug) {
     val skipCSR = VecInit(Seq("h301".U, "hc00".U, "hc01".U, "hc02".U, "hc80".U, "hc81".U, "hc82".U))
