@@ -18,9 +18,10 @@ class MemPreOut extends ExecOut {
   // sc
   val sc = Output(Bool())
   // Data Cache
-  val dcacheValid = Output(Bool())
-  val dcacheTag = Output(UInt(dc.tagW.W))
+  val dcacheValid = Output(dc.validType)
+  val dcacheTag = Output(dc.tagType)
   val dcacheData = Output(dc.dataType)
+  val dcachePlru = Output(dc.plruType)
 }
 
 object MemPre {
@@ -34,11 +35,12 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   out.bits.viewAsSupertype(new ExecOut) := cur
 
   // dcache读
-  val dcacheReadIO = IO(new dc.readIO)
+  val dcacheReadIO = IO(new dc.ReadIO)
   dcacheReadIO.index := dc.getIndex(cur.rdVal)
   out.bits.dcacheValid := dcacheReadIO.valid
   out.bits.dcacheTag := dcacheReadIO.tag
   out.bits.dcacheData := dcacheReadIO.data
+  out.bits.dcachePlru := dcacheReadIO.plru
 
   // 控制信号
   val mem = cur.mem.orR

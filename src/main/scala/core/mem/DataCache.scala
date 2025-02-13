@@ -1,7 +1,7 @@
 package core.mem
 
-import core.misc.CacheWayFactory
+import core.misc.CacheFactory
 
 object DataCache {
-  val dcacheFactory = new CacheWayFactory()
+  val dcacheFactory = new CacheFactory()
 }

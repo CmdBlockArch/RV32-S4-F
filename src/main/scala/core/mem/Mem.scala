@@ -66,15 +66,9 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val paddr = Cat(cur.ppn, cur.rdVal(11, 0))
 
   // cache写入生成
-  val genValid = RegInit(false.B)
-  val genTag = Reg(UInt(dc.tagW.W))
-  val genIndex = Reg(UInt(dc.indexW.W))
-  val genData = Reg(dc.dataType)
-  val dcacheWriteIO = IO(new dc.writeIO)
-  dcacheWriteIO.en := genValid
-  dcacheWriteIO.tag := genTag
-  dcacheWriteIO.index := genIndex
-  dcacheWriteIO.data := genData
+  val gen = RegInit(dc.WriteIO.initGen)
+  val dcacheWriteIO = IO(new dc.WriteIO)
+  dcacheWriteIO := gen
 
   // 当前指令读取/写入的地址，vipt
   val tag = dc.getTag(paddr)
@@ -82,12 +76,17 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val offset = dc.getOffset(paddr)
 
   // gen优先级更高
-  val useGen = genValid && index === genIndex
-  val dcValid = useGen || cur.dcacheValid
-  val dcTag = Mux(useGen, genTag, cur.dcacheTag)
-  val dcAddr = Cat(dcTag, index, 0.U(dc.offsetW.W))
-  val dcData = Mux(useGen, genData.asUInt, cur.dcacheData.asUInt).asTypeOf(dc.dataType)
-  val dcHit = dcValid && Mux(useGen, genTag === tag, cur.dcacheTag === tag)
+  val useGen = gen.en && index === gen.index
+  val dcValid = Mux(useGen, gen.valid, cur.dcacheValid)
+  val dcTag = Mux(useGen, gen.tag, cur.dcacheTag)
+  val dcData = Mux(useGen, gen.data, cur.dcacheData)
+  val dcPlru = Mux(useGen, gen.plru, cur.dcachePlru)
+
+  val (genHit, genWay) = dc.tagHit(gen.valid, gen.tag, tag)
+  val (curHit, curWay) = dc.tagHit(cur.dcacheValid, cur.dcacheTag, tag)
+  val dcHit = Mux(useGen, genHit, curHit)
+  val dcWay = Mux(useGen, genWay, curWay)
+  val dcEvictWay = Wire(UInt(dc.wayW.W)); dcEvictWay := ~dcPlru
 
   // 状态机
   val req = RegInit(false.B)
@@ -95,18 +94,25 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   sb.io.lock := valid && mem && !dcHit
   when (!req && sb.io.locked) {
     req := true.B
-    genValid := false.B
-    genTag := tag
-    genIndex := index
-    cur.dcacheValid := false.B
+    gen.en := false.B
+    gen.plru := dcEvictWay // 二路组相联LRU
+    when (!useGen) {
+      gen.index := index
+      gen.valid := cur.dcacheValid
+      gen.tag := cur.dcacheTag
+      gen.data := cur.dcacheData
+    }
+    cur.dcacheValid := 0.U.asTypeOf(dc.validType)
+    gen.valid(dcEvictWay) := true.B
+    gen.tag(dcEvictWay) := tag
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
-    genData(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
+    gen.data(gen.plru)(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
     burstOffset := burstOffset + 1.U
     when (memReadIO.last) {
       req := false.B
-      genValid := true.B
+      gen.en := true.B
     }
   }
   memReadIO.req := req
@@ -115,25 +121,30 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   sb.readIO.addr := Cat(paddr(31, dc.offsetW), burstOffset, 0.U(2.W))
 
   // load/store结果
-  val storeValid = valid && (store || amo) && dcHit
-  val data = Mux(useGen, genData(offset).asUInt, cur.dcacheData(offset).asUInt)
+  // val data = dcData(dcWay)(offset).asUInt
+  val dataWay = Mux(useGen, gen.data(dcWay).asUInt,
+    cur.dcacheData(dcWay).asUInt).asTypeOf(dc.wayDataType)
+  val data = dataWay(offset)
   val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
   val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, paddr, data, cur.data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
   // dcache写入
-  when (storeValid && !useGen) {
-    genData := cur.dcacheData
-  }
-  when (storeValid) {
-    genValid := true.B
-    genTag := tag
-    genIndex := index
-    when (store) { genData(offset) := storeVal }
-    when (amo) { genData(offset) := amoVal }
+  when (valid && mem && dcHit) {
+    gen.plru := dcWay
+    when (!useGen) {
+      gen.en := true.B
+      gen.index := index
+      gen.valid := cur.dcacheValid
+      gen.tag := cur.dcacheTag
+      gen.data := cur.dcacheData
+    }
+    when (store) { gen.data(dcWay)(offset) := storeVal }
+    when (amo) { gen.data(dcWay)(offset) := amoVal }
   }
 
   // store buffer写入
+  val storeValid = valid && (store || amo) && dcHit
   sb.writeIO.req := storeValid
   sb.writeIO.addr := paddr
   sb.writeIO.data := Mux(store, storeVal, amoVal)

@@ -16,7 +16,7 @@ import perip.{AxiReadIO, AxiWriteIO, SimMemRead, SimMemWrite}
 
 class Top extends Module {
   val gpr = Module(new RegFile)
-  val dcache = Module(new DataCache.dcacheFactory.CacheWay)
+  val dcache = Module(new DataCache.dcacheFactory.Cache)
   val bpu = Module(new Bpu.factory.BrPred)
   val memReadArb = Module(new MemReadArb(4))
   val memWriteArb = Module(new MemWriteArb(2))
