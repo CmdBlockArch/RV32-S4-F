@@ -46,6 +46,7 @@ class DecodeOut extends Bundle {
   // 异常处理
   val pc = Output(UInt(32.W))
   val trap = Output(Bool())
+  val intr = Output(UInt(2.W))
   val cause = Output(UInt(4.W))
   // 分支预测
   val bpuHit = Output(Bool())
@@ -167,7 +168,8 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   val invInst = cs(InvInstField) || csrErr || retErr || fenceVMAErr || wfiErr
   out.bits.pc := cur.pc
   out.bits.trap := cur.trap || invInst || ecall || ebreak
-  out.bits.cause := Mux(cur.trap, 12.U, Mux1H(Seq(
+  out.bits.intr := cur.intr
+  out.bits.cause := Mux(cur.trap, cur.cause, Mux1H(Seq(
     invInst -> 2.U,
     ecall -> (8.U(4.W) | io.priv),
     ebreak -> 3.U,
@@ -181,6 +183,6 @@ class Decode extends PiplineModule(new FetchOut, new DecodeOut) {
   if (debug) {
     val skipCSR = VecInit(Seq("h301".U, "hc00".U, "hc01".U, "hc02".U, "hc80".U, "hc81".U, "hc82".U))
     out.bits.inst.get := inst
-    out.bits.skip.get := zicsr && skipCSR.contains(csrAddr)
+    out.bits.skip.get := cur.skip.get || (zicsr && skipCSR.contains(csrAddr))
   }
 }

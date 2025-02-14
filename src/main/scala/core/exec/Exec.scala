@@ -27,6 +27,7 @@ class ExecOut extends Bundle {
   val pc = Output(UInt(32.W))
   val dnpc = Output(UInt(32.W))
   val trap = Output(Bool())
+  val intr = Output(UInt(2.W))
   val cause = Output(UInt(4.W))
   val flush = Output(Bool())
   // 调试
@@ -174,6 +175,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   out.bits.fenceVMA := (cur.fenceVMA || satpWrite) && !cur.trap
   out.bits.pc := cur.pc
   out.bits.trap := trap || instMisaligned
+  out.bits.intr := cur.intr
   out.bits.cause := Mux(cur.trap, cur.cause, Mux(mem, Mux(cur.mem(3), 4.U, 6.U), 0.U))
   out.bits.flush := out.bits.flushEn
 

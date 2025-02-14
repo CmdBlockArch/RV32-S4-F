@@ -28,11 +28,11 @@ class CsrRegFile {
   
   // mip
   val SSIP = RegInit(false.B)
-  val MSIP = RegInit(false.B)
+  val MSIP = Wire(Bool())
   val STIP = RegInit(false.B)
-  val MTIP = RegInit(false.B)
+  val MTIP = Wire(Bool())
   val SEIP = RegInit(false.B)
-  val MEIP = RegInit(false.B)
+  val MEIP = Wire(Bool())
   
   val mtvec = Reg(UInt(32.W))
   val mepc = Reg(UInt(32.W))
@@ -61,6 +61,50 @@ class CsrRegFile {
     MPP, 0.U(2.W), SPP, MPIE, 0.B, SPIE, 0.B, MIE, 0.B, SIE, 0.B)
   def mie = Cat(0.U(20.W), MEIE, 0.B, SEIE, 0.B, MTIE, 0.B, STIE, 0.B, MSIE, 0.B, SSIE, 0.B)
   def mip = Cat(0.U(20.W), MEIP, 0.B, SEIP, 0.B, MTIP, 0.B, STIP, 0.B, MSIP, 0.B, SSIP, 0.B)
+
+  def intr(priv: UInt) = {
+    val intrToM = !priv(1) || MIE
+    val intrToS = (priv === Priv.S && SIE) || !priv(0)
+    val meia = MEIP && MEIE
+    val msia = MSIP && MSIE
+    val mtia = MTIP && MTIE
+    val seia = SEIP && SEIE
+    val ssia = SSIP && SSIE
+    val stia = STIP && STIE
+    val meiaM = meia && ~mideleg(11)
+    val msiaM = msia && ~mideleg(3)
+    val mtiaM = mtia && ~mideleg(7)
+    val seiaM = seia && ~mideleg(9)
+    val ssiaM = ssia && ~mideleg(1)
+    val stiaM = stia && ~mideleg(5)
+    val seiaS = seia && mideleg(9)
+    val ssiaS = ssia && mideleg(1)
+    val stiaS = stia && mideleg(5)
+
+    val intrMEn = (meiaM || msiaM || mtiaM || seiaM || ssiaM || stiaM) && intrToM
+    val imtrMCause = PriorityMux(Seq(
+      meiaM -> 11.U,
+      msiaM -> 3.U,
+      mtiaM -> 7.U,
+      seiaM -> 9.U,
+      ssiaM -> 1.U,
+      stiaM -> 5.U
+    ))
+    val intrSEn = (seiaS || ssiaS || stiaS) && intrToS
+    val imtrSCause = PriorityMux(Seq(
+      seiaS -> 9.U,
+      ssiaS -> 1.U,
+      stiaS -> 5.U
+    ))
+
+    // 10：机器模式中断；01：系统模式中断；00：无中断
+    val intr = Wire(UInt(2.W))
+    intr := Cat(intrMEn, intrSEn && !intrMEn)
+    val cause = Wire(UInt(4.W))
+    cause := Mux(intrMEn, imtrMCause, imtrSCause)
+
+    (intr, cause)
+  }
 
   def debugOut = {
     val t = Wire(new CsrDebugBundle)

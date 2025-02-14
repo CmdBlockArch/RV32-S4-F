@@ -37,9 +37,20 @@ class WriteBack extends Module {
     val mstatusTVM = Output(Bool())
     val mstatusTW = Output(Bool())
     val mstatusTSR = Output(Bool())
+
+    val msip = Input(Bool())
+    val mtip = Input(Bool())
+    val meip = Input(Bool())
+    val intr = Output(UInt(2.W))
+    val intrCause = Output(UInt(32.W))
   })
 
   // ---------- WB流水级器件 ----------
+  // 特权级
+  val priv = RegInit(Priv.M)
+  val privM = priv(1)
+  io.priv := priv
+
   // CSR
   val csr = new CsrRegFile
   csr.counter := csr.counter + 1.U
@@ -52,17 +63,20 @@ class WriteBack extends Module {
   io.mstatusTW := csr.TW
   io.mstatusTSR := csr.TSR
 
+  // 中断
+  csr.MSIP := io.msip
+  csr.MTIP := io.mtip
+  csr.MEIP := io.meip
+  val (outIntr, outIntrCause) = csr.intr(priv)
+  io.intr := outIntr
+  io.intrCause := outIntrCause
+
   // CSR读，master位于Decode
   val csrReadIO = IO(Flipped(new CsrReadIO))
   val csrReadPort = new CsrReadPort(csr)
   val (csrReadData: UInt, csrReadErr: Bool) = csrReadPort(csrReadIO.addr)
   csrReadIO.data := csrReadData
   csrReadIO.err := csrReadErr
-
-  // 特权级
-  val priv = RegInit(Priv.M)
-  val privM = priv(1)
-  io.priv := priv
 
   // ---------- WB动作逻辑 ----------
   // 寄存器写
@@ -77,15 +91,23 @@ class WriteBack extends Module {
     csrWritePort(cur.csrAddr, cur.csrData)
   }
 
-  // flush
-  io.flush := cur.valid && cur.flush
+  // 中断
+  val intr = cur.intr.orR
+  val intrTvec = Mux1H(cur.intr, Seq(csr.stvec, csr.mtvec))
+  val intrAddr = Cat(intrTvec(31, 2), 0.U(2.W)) + Mux(intrTvec(0), Cat(cur.cause, 0.U(2.W)), 0.U)
+
+  // 异常
   val medeleg = csr.medeleg(15, 0)
   val trapToS = !privM && medeleg(cur.cause)
-  val trapAddr = Mux(trapToS, csr.stvec, csr.mtvec)
+  val trapTvec = Mux(trapToS, csr.stvec, csr.mtvec)
+  val trapAddr = Cat(trapTvec(31, 2), 0.U(2.W))
+
+  // flush
+  io.flush := cur.valid && cur.flush
   io.dnpc := Mux1H(Seq(
     cur.mret -> csr.mepc,
     cur.sret -> csr.sepc,
-    cur.trap -> trapAddr,
+    cur.trap -> Mux(intr, intrAddr, trapAddr),
     (!cur.retEn && !cur.trap) -> (cur.pc + 4.U)
   ))
 
@@ -93,13 +115,12 @@ class WriteBack extends Module {
   io.fenceI := cur.valid && cur.fenceI
   io.fenceVMA := cur.valid && cur.fenceVMA
 
-  val tval = Mux1H(decoder(cur.cause, WriteBack.tvalTruthTable),
-    Seq(0.U(32.W), cur.pc, cur.vaddr))
+  val tval = Mux(intr, 0.U, Mux1H(decoder(cur.cause, WriteBack.tvalTruthTable), Seq(0.U(32.W), cur.pc, cur.vaddr)))
 
   // trap
   when (cur.valid && cur.trap) {
-    when (trapToS) { // trap to S-Mode
-      csr.scause := cur.cause
+    when (Mux(intr, cur.intr(0), trapToS)) { // trap to S-Mode
+      csr.scause := Cat(intr.asBool, 0.U(27.W), cur.cause)
       csr.sepc := cur.pc
       csr.stval := tval
       csr.SPIE := csr.SIE
@@ -107,7 +128,7 @@ class WriteBack extends Module {
       csr.SPP := priv
       priv := Priv.S
     } .otherwise { // trap to M-Mode
-      csr.mcause := cur.cause
+      csr.mcause := Cat(intr.asBool, 0.U(27.W), cur.cause)
       csr.mepc := cur.pc
       csr.mtval := tval
       csr.MPIE := csr.MIE

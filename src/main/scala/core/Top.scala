@@ -15,6 +15,12 @@ import core.mmu.{Mmu, Ptw, PtwArb}
 import perip.{AxiReadIO, AxiWriteIO, SimMemRead, SimMemWrite}
 
 class Top extends Module {
+  val io = IO(new Bundle {
+    val msip = Input(Bool())
+    val mtip = Input(Bool())
+    val meip = Input(Bool())
+  })
+
   val gpr = Module(new RegFile)
   val iCache = Module(new InstCache.icacheFactory.Cache)
   val dCache = Module(new DataCache.dcacheFactory.Cache)
@@ -58,6 +64,8 @@ class Top extends Module {
 
   // fetch
   fetch.io.flush := preBrFlush
+  fetch.io.intr := wb.io.intr
+  fetch.io.intrCause := wb.io.intrCause
   memReadArb.master(0) :<>= fetch.memReadIO
   val iMmu = mkMmu(0)
   iMmu.io.flush := wb.io.flush
@@ -101,6 +109,9 @@ class Top extends Module {
   iCache.io.flush := wb.io.fenceI
   dCache.io.flush := wb.io.fenceI
   bpu.io.flush := wb.io.fenceI
+  wb.io.msip := io.msip
+  wb.io.mtip := io.mtip
+  wb.io.meip := io.meip
 
   if (debug) { // simMem
     val simMemRead = Module(new SimMemRead)

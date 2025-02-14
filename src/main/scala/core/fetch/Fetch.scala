@@ -6,22 +6,29 @@ import core.misc.MemReadIO
 import core.mmu.MmuIO
 import InstCache.{icacheFactory => ic}
 import Bpu.{factory => bpu}
+import utils.Config._
 
 class FetchOut extends Bundle {
-  val pc = UInt(32.W)
-  val inst = UInt(32.W)
+  val pc = Output(UInt(32.W))
+  val inst = Output(UInt(32.W))
 
-  val bpuHit = Bool()
-  val bpuIdx = UInt(bpu.btbW.W)
-  val dnpc = UInt(32.W)
+  val bpuHit = Output(Bool())
+  val bpuIdx = Output(UInt(bpu.btbW.W))
+  val dnpc = Output(UInt(32.W))
 
-  val trap = Bool()
-  // val cause = UInt(4.W) // only 12 (page fault)
+  val trap = Output(Bool())
+  val intr = Output(UInt(2.W))
+  val cause = Output(UInt(4.W))
+
+  val skip = DebugOutput(Bool())
 }
 
 class Fetch extends Module {
   val io = IO(new Bundle {
     val flush = Input(Bool())
+
+    val intr = Input(UInt(2.W))
+    val intrCause = Input(UInt(4.W))
   })
   val out = IO(Decoupled(new FetchOut))
   val memReadIO = IO(new MemReadIO)
@@ -61,28 +68,34 @@ class Fetch extends Module {
   when (in.ready && idle) { genValid := false.B }
 
   // ICache命中 & 输出
-  val hit = Wire(Bool())
+  val icHit = Wire(Bool())
+  val icTrap = Wire(Bool())
   val curHitVec = ic.tagHitVec(cur.icValid, cur.icTag, tag)
   val curHitWay = curHitVec.onlyIndexWhere(_.asBool)
   when (genValid) {
-    hit := true.B
+    icHit := true.B
+    icTrap := genPf
     out.bits.inst := genData(offset)
-    out.bits.trap := genPf
   } .otherwise {
-    hit := curHitVec.reduce(_ || _)
+    icHit := curHitVec.reduce(_ || _)
+    icTrap := false.B
     out.bits.inst := Mux1H(curHitVec, cur.icData)(offset)
-    out.bits.trap := false.B
   }
+  val intr = io.intr.orR
+  val hit = icHit || intr
   out.valid := valid && !io.flush && hit
   out.bits.pc := cur.pc
   out.bits.bpuHit := cur.bpuHit
   out.bits.bpuIdx := cur.bpuIdx
   out.bits.dnpc := cur.dnpc
+  out.bits.trap := icTrap || intr
+  out.bits.intr := io.intr
+  out.bits.cause := Mux(intr, io.intrCause, 12.U)
 
   // 二路组相联 dcache PLRU
   val plru = Reg(ic.plruType)
   val evictWay = ~plru(index)
-  when (valid && hit) {
+  when (valid && icHit && !io.flush && !intr) {
     plru(index) := Mux(genValid, genWay, curHitWay)
   }
 
@@ -125,6 +138,11 @@ class Fetch extends Module {
 
   // flush
   when (io.flush) { valid := false.B }
+
+  // debug
+  if (debug) {
+    out.bits.skip.get := intr
+  }
 }
 
 object Fetch {
