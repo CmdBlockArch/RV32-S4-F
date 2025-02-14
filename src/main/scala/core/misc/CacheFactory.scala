@@ -5,7 +5,6 @@ import utils.SRam
 
 class CacheFactory(val offsetW: Int = 4, val indexW: Int = 4, val wayW: Int = 1) {
   val wayN = 1 << wayW
-  val plruW = wayN - 1
 
   // Tag | Index | Offset
   val tagW = 32 - offsetW - indexW // tag宽度
@@ -18,19 +17,16 @@ class CacheFactory(val offsetW: Int = 4, val indexW: Int = 4, val wayW: Int = 1)
   val tagType = Vec(wayN, UInt(tagW.W))
   val wayDataType = Vec(blockN, UInt(32.W))
   val dataType = Vec(wayN, wayDataType)
-  val plruType = UInt(plruW.W)
+  val plruType = Vec(setN, UInt((wayN - 1).W))
 
   def getOffset(addr: UInt): UInt = addr(offsetW - 1, 2)
   def getIndex(addr: UInt): UInt = addr(indexW + offsetW - 1, offsetW)
   def getTag(addr: UInt): UInt = addr(31, indexW + offsetW)
 
-  def tagHit(cvalid: Vec[Bool], ctag: Vec[UInt], tag: UInt) = {
-    val hitVec = VecInit(cvalid.zip(ctag).map{
+  def tagHitVec(cvalid: Vec[Bool], ctag: Vec[UInt], tag: UInt) = {
+    VecInit(cvalid.zip(ctag).map{
       case (v, t) => v && t === tag
     })
-    val hit = hitVec.reduce(_ || _)
-    val way = hitVec.onlyIndexWhere(_.asBool)
-    (hit, way)
   }
 
   class ReadIO extends Bundle {
@@ -39,24 +35,22 @@ class CacheFactory(val offsetW: Int = 4, val indexW: Int = 4, val wayW: Int = 1)
     val valid = Input(validType)
     val tag = Input(tagType)
     val data = Input(dataType)
-    val plru = Input(plruType)
   }
 
   class WriteIO extends Bundle {
-    val en = Output(Bool())
+    val valid = Output(Bool())
     val index = Output(UInt(indexW.W))
+    val way = Output(UInt(wayW.W))
 
-    val valid = Output(validType)
-    val tag = Output(tagType)
-    val data = Output(dataType)
-    val plru = Output(plruType)
+    val tag = Output(UInt(tagW.W))
+    val data = Output(wayDataType)
   }
 
   object WriteIO {
     def initGen = {
       val w = Wire(new WriteIO)
       w := DontCare
-      w.en := false.B
+      w.valid := false.B
       w
     }
   }
@@ -66,37 +60,35 @@ class CacheFactory(val offsetW: Int = 4, val indexW: Int = 4, val wayW: Int = 1)
     val writeIO = IO(Flipped(new WriteIO))
 
     val valid = RegInit(VecInit(Seq.fill(setN)(VecInit(Seq.fill(wayN)(false.B)))))
-    val plru = Reg(Vec(setN, UInt(plruW.W)))
     val tag = Seq.fill(wayN)(Module(new SRam(indexW, tagW)))
     val data = Seq.fill(wayN)(Module(new SRam(indexW, blockW)))
 
     // 读端口
-    val forward = WireDefault(writeIO.en && readIO.index === writeIO.index)
+    val forward = WireDefault(writeIO.valid && readIO.index === writeIO.index)
+    readIO.valid := valid(readIO.index)
     when (forward) {
-      readIO.valid := writeIO.valid
-      readIO.plru := writeIO.plru
-    } .otherwise {
-      readIO.valid := valid(readIO.index)
-      readIO.plru := plru(readIO.index)
+      readIO.valid(writeIO.way) := writeIO.valid
     }
-
     tag.foreach(_.readIO.addr := readIO.index)
     readIO.tag := tag.map(_.readIO.data)
-
     data.foreach(_.readIO.addr := readIO.index)
     readIO.data := data.map(_.readIO.data.asTypeOf(wayDataType))
 
     // 写端口
-    when (writeIO.en) {
-      valid(writeIO.index) := writeIO.valid
-      plru(writeIO.index) := writeIO.plru
+    when (writeIO.valid) {
+      valid(writeIO.index)(writeIO.way) := writeIO.valid
     }
-    tag.foreach(_.writeIO.en := writeIO.en)
+    def setWriteEn(s: Seq[SRam]) = {
+      (0 until wayN).zip(s).foreach {
+        case (i, t) => t.writeIO.en := writeIO.valid && writeIO.way === i.U
+      }
+    }
+    setWriteEn(tag)
     tag.foreach(_.writeIO.addr := writeIO.index)
-    tag.zip(writeIO.tag).foreach{case (t, w) => t.writeIO.data := w}
-    data.foreach(_.writeIO.en := writeIO.en)
+    tag.foreach(_.writeIO.data := writeIO.tag)
+    setWriteEn(data)
     data.foreach(_.writeIO.addr := writeIO.index)
-    data.zip(writeIO.data).foreach{case (d, w) => d.writeIO.data := w.asUInt}
+    data.foreach(_.writeIO.data := writeIO.data.asUInt)
 
     // 冲刷
     val io = IO(new Bundle {

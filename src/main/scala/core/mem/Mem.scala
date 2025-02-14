@@ -75,18 +75,17 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val index = dc.getIndex(paddr)
   val offset = dc.getOffset(paddr)
 
-  // gen优先级更高
-  val useGen = gen.en && index === gen.index
-  val dcValid = Mux(useGen, gen.valid, cur.dcacheValid)
-  val dcTag = Mux(useGen, gen.tag, cur.dcacheTag)
-  val dcData = Mux(useGen, gen.data, cur.dcacheData)
-  val dcPlru = Mux(useGen, gen.plru, cur.dcachePlru)
+  // 命中判断
+  val genHit = gen.valid && gen.index === index && gen.tag === tag
+  val curHitVec = dc.tagHitVec(cur.dcacheValid, cur.dcacheTag, tag)
+  val dcHit = genHit || curHitVec.reduce(_ || _)
+  val dcWay = Mux(genHit, gen.way, curHitVec.onlyIndexWhere(_.asBool))
+  val dcData = Mux(genHit, gen.data.asUInt,
+    Mux1H(curHitVec, cur.dcacheData).asUInt).asTypeOf(dc.wayDataType)
 
-  val (genHit, genWay) = dc.tagHit(gen.valid, gen.tag, tag)
-  val (curHit, curWay) = dc.tagHit(cur.dcacheValid, cur.dcacheTag, tag)
-  val dcHit = Mux(useGen, genHit, curHit)
-  val dcWay = Mux(useGen, genWay, curWay)
-  val dcEvictWay = Wire(UInt(dc.wayW.W)); dcEvictWay := ~dcPlru
+  // 二路组相联 dcache PLRU
+  val plru = Reg(dc.plruType)
+  val dcEvictWay = ~plru(index)
 
   // 状态机
   val req = RegInit(false.B)
@@ -94,25 +93,19 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   sb.io.lock := valid && mem && !dcHit
   when (!req && sb.io.locked) {
     req := true.B
-    gen.en := false.B
-    gen.plru := dcEvictWay // 二路组相联LRU
-    when (!useGen) {
-      gen.index := index
-      gen.valid := cur.dcacheValid
-      gen.tag := cur.dcacheTag
-      gen.data := cur.dcacheData
-    }
+    gen.valid := false.B
+    gen.index := index
+    gen.way := dcEvictWay
+    gen.tag := tag
     cur.dcacheValid := 0.U.asTypeOf(dc.validType)
-    gen.valid(dcEvictWay) := true.B
-    gen.tag(dcEvictWay) := tag
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
-    gen.data(gen.plru)(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
+    gen.data(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
     burstOffset := burstOffset + 1.U
     when (memReadIO.last) {
       req := false.B
-      gen.en := true.B
+      gen.valid := true.B
     }
   }
   memReadIO.req := req
@@ -121,26 +114,21 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   sb.readIO.addr := Cat(paddr(31, dc.offsetW), burstOffset, 0.U(2.W))
 
   // load/store结果
-  // val data = dcData(dcWay)(offset).asUInt
-  val dataWay = Mux(useGen, gen.data(dcWay).asUInt,
-    cur.dcacheData(dcWay).asUInt).asTypeOf(dc.wayDataType)
-  val data = dataWay(offset)
+  val data = dcData(offset)
   val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
   val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, paddr, data, cur.data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
   // dcache写入
   when (valid && mem && dcHit) {
-    gen.plru := dcWay
-    when (!useGen) {
-      gen.en := true.B
-      gen.index := index
-      gen.valid := cur.dcacheValid
-      gen.tag := cur.dcacheTag
-      gen.data := cur.dcacheData
-    }
-    when (store) { gen.data(dcWay)(offset) := storeVal }
-    when (amo) { gen.data(dcWay)(offset) := amoVal }
+    plru(index) := dcWay
+    gen.valid := true.B
+    gen.index := index
+    gen.way := dcWay
+    gen.tag := tag
+    gen.data := dcData
+    when (store) { gen.data(offset) := storeVal }
+    when (amo) { gen.data(offset) := amoVal }
   }
 
   // store buffer写入
