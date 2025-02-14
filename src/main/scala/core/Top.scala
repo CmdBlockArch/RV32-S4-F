@@ -3,7 +3,7 @@ package core
 import chisel3._
 import chisel3.experimental.dataview._
 import utils.Config._
-import core.fetch.Fetch
+import core.fetch.{InstCache, FetchPc, Fetch}
 import core.decode.Decode
 import core.exec.Exec
 import core.mem.{DataCache, Mem, MemPre}
@@ -16,12 +16,14 @@ import perip.{AxiReadIO, AxiWriteIO, SimMemRead, SimMemWrite}
 
 class Top extends Module {
   val gpr = Module(new RegFile)
-  val dcache = Module(new DataCache.dcacheFactory.Cache)
+  val iCache = Module(new InstCache.icacheFactory.Cache)
+  val dCache = Module(new DataCache.dcacheFactory.Cache)
   val bpu = Module(new Bpu.factory.BrPred)
   val memReadArb = Module(new MemReadArb(4))
   val memWriteArb = Module(new MemWriteArb(2))
 
-  val fetch = Module(new Fetch)
+  val fetchPc = Module(new FetchPc)
+  val fetch = Module(new Fetch); fetch.in :<>= fetchPc.out
   val decode = Module(new Decode); decode.in :<>= fetch.out
   val exec = Module(new Exec); exec.in :<>= decode.out
   val memPre = Module(new MemPre); memPre.in :<>= exec.out
@@ -45,18 +47,25 @@ class Top extends Module {
     mmu
   }
 
+  // 分支结果产生前的flush信号
+  val preBrFlush = exec.io.jmp || wb.io.flush
+
+  // fetchPc
+  fetchPc.io.flush := preBrFlush
+  fetchPc.io.dnpc := Mux(wb.io.flush, wb.io.dnpc, exec.io.dnpc)
+  bpu.predIO :<>= fetchPc.bpuPredIO
+  iCache.readIO :<>= fetchPc.icReadIO
+
   // fetch
-  fetch.io.flush := exec.io.jmp || wb.io.flush
-  fetch.io.dnpc := Mux(wb.io.flush, wb.io.dnpc, exec.io.dnpc)
-  fetch.io.fenceI := wb.io.fenceI
-  bpu.predIO :<>= fetch.bpuPredIO
+  fetch.io.flush := preBrFlush
   memReadArb.master(0) :<>= fetch.memReadIO
   val iMmu = mkMmu(0)
   iMmu.io.flush := wb.io.flush
   iMmu.mmuIO :<>= fetch.mmuIO
+  iCache.writeIO :<>= fetch.icacheWriteIO
 
   // decode
-  decode.flush := exec.io.jmp || wb.io.flush
+  decode.flush := preBrFlush
   gpr.readIO :<>= decode.gprReadIO
   wb.csrReadIO :<>= decode.csrReadIO
   decode.io.priv := wb.io.priv
@@ -72,7 +81,7 @@ class Top extends Module {
   // memPre
   memPre.flush := wb.io.flush
   memPre.io.sbEmpty := mem.io.sbEmpty
-  dcache.readIO :<>= memPre.dcacheReadIO
+  dCache.readIO :<>= memPre.dcacheReadIO
   memReadArb.master(1) :<>= memPre.memReadIO
   memWriteArb.master(1) :<>= memPre.memWriteIO
   gpr.fwIO(1) :<>= memPre.gprFwIO
@@ -82,14 +91,15 @@ class Top extends Module {
 
   // mem
   mem.flush := false.B
-  dcache.writeIO :<>= mem.dcacheWriteIO
+  dCache.writeIO :<>= mem.dcacheWriteIO
   memReadArb.master(2) :<>= mem.memReadIO
   memWriteArb.master(0) :<>= mem.memWriteIO
   gpr.fwIO(2) :<>= mem.gprFwIO
 
   // wb
   gpr.writeIO :<>= wb.gprWriteIO
-  dcache.io.flush := wb.io.fenceI
+  iCache.io.flush := wb.io.fenceI
+  dCache.io.flush := wb.io.fenceI
   bpu.io.flush := wb.io.fenceI
 
   if (debug) { // simMem
