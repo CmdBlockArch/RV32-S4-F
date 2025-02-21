@@ -35,7 +35,7 @@ class Mul extends Module {
       val out_valid = Output(Bool())
       val out_prod = Output(UInt(64.W))
     })
-    val module_name = if (debug) "MUL_test" else "MUL_radix_4"
+    val module_name = if (debug && fastMul) "MUL_test" else "MUL_radix_4"
     override def desiredName = module_name
     addResource(s"/$module_name.sv")
   }

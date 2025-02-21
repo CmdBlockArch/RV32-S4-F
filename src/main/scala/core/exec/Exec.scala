@@ -113,7 +113,7 @@ class Exec extends PiplineModule(new DecodeOut, new ExecOut) {
   val divZero = cur.src2 === 0.U(32.W)
   // val divSign = mulFunc.div || mulFunc.rem
   val divSign = !cur.func(0)
-  div.in.valid := valid && !cur.trap && cur.mul && !divZero &&
+  div.in.valid := valid && !cur.trap && cur.mul && !divZero && !mulFuncMul &&
     ((divSign && !divOf) || mulFunc.divu || mulFunc.remu)
   div.in.sign := divSign
   div.in.a := cur.src1

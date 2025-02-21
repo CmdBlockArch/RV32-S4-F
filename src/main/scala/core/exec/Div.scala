@@ -37,7 +37,7 @@ class Div extends Module {
       val out_quot = Output(UInt(32.W))
       val out_rem = Output(UInt(32.W))
     })
-    val module_name = if (debug) "DIV_test" else "DIV"
+    val module_name = if (debug && fastMul) "DIV_test" else "DIV"
     override def desiredName = module_name
     addResource(s"/$module_name.sv")
   }

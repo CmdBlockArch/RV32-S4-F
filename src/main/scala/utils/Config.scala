@@ -4,6 +4,7 @@ import chisel3._
 
 object Config {
   val debug = true
+  val fastMul = true
   val resetVec = 0x80000000L.U(32.W)
 
   def DebugRegNext[T <: Data](next: T, init: T) = {
