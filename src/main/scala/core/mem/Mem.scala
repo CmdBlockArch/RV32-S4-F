@@ -91,7 +91,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   // 状态机
   val req = RegInit(false.B)
   val burstOffset = Reg(UInt((dc.offsetW - 2).W))
-  sb.io.lock := valid && mem && !dcHit
+  sb.io.lock := valid && (load || amo) && !dcHit
   when (!req && sb.io.locked) {
     req := true.B
     gen.valid := false.B
@@ -102,7 +102,11 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
     burstOffset := 0.U
   }
   when (memReadIO.resp) {
-    gen.data(burstOffset) := Mux(sb.readIO.valid, sb.readIO.data, memReadIO.data)
+    when (sb.readIO.valid) {
+      gen.data(burstOffset) := sb.readIO.merge(memReadIO.data)
+    } .otherwise {
+      gen.data(burstOffset) := memReadIO.data
+    }
     burstOffset := burstOffset + 1.U
     when (memReadIO.last) {
       req := false.B
@@ -117,12 +121,15 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   // load/store结果
   val data = dcData(offset)
   val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
-  val storeVal = Wire(UInt(32.W)); storeVal := Mem.getStoreVal(cur.mem, paddr, data, cur.data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
+
+  val stData = Wire(UInt(32.W)); stData := cur.data << Cat(paddr(1, 0), 0.U(3.W))
+  val wstrb = Wire(UInt(4.W)); wstrb := Cat(Fill(2, cur.mem(1)), cur.mem(1, 0).orR, 1.U(1.W)) << paddr(1, 0)
+  val wmask = Cat(Fill(8, wstrb(3)), Fill(8, wstrb(2)), Fill(8, wstrb(1)), Fill(8, wstrb(0)))
+  val storeVal = Wire(UInt(32.W)); storeVal := (data & ~wmask) | (stData & wmask)
 
   // dcache写入
   when (valid && mem && dcHit) {
-    plru(index) := dcWay
     gen.valid := true.B
     gen.index := index
     gen.way := dcWay
@@ -130,16 +137,19 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
     gen.data := dcData
     when (store) { gen.data(offset) := storeVal }
     when (amo) { gen.data(offset) := amoVal }
+    when (load) { plru(index) := dcWay }
   }
 
   // store buffer写入
-  val storeValid = valid && (store || amo) && dcHit
+  val storeValid = valid && (store || (amo && dcHit))
   sb.writeIO.req := storeValid
   sb.writeIO.addr := paddr
-  sb.writeIO.data := Mux(store, storeVal, amoVal)
+  sb.writeIO.data := Mux(store, stData, amoVal)
+  sb.writeIO.strb := wstrb
+  val sbResp = sb.writeIO.resp
 
   // 阶段完成条件
-  setOutCond(!mem || (dcHit && (!(store || amo) || sb.writeIO.resp)))
+  setOutCond(!mem || (store && sbResp) || (dcHit && (load || sbResp)))
 
   // 前递
   val gprFwIO = IO(new GprFwIO)
@@ -187,13 +197,6 @@ object Mem {
       BitPat("b1110") -> BitPat("b100000000"),
     ), BitPat.dontCare(9)
   )
-  def getStoreVal(mem: UInt, addr: UInt, old: UInt, data: UInt): UInt = {
-    val offset = Cat(addr(1, 0), 0.U(3.W))
-    val wstrb = Wire(UInt(32.W))
-    wstrb := Cat(Fill(16, mem(1)), Fill(8, mem(1, 0).orR), Fill(8, 1.U(1.W))) << offset
-    val wdata = Wire(UInt(32.W)); wdata := data << offset
-    (old & ~wstrb) | (wdata & wstrb)
-  }
   def getLoadVal(mem: UInt, addr: UInt, old: UInt): UInt = {
     val offset = Cat(addr(1, 0), 0.U(3.W))
     val rdata = Wire(UInt(32.W)); rdata := old >> offset
