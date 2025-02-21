@@ -123,7 +123,7 @@ class Mem extends PiplineModule(new MemPreOut, new MemOut) {
   val loadVal = Wire(UInt(32.W)); loadVal := Mem.getLoadVal(cur.mem, paddr, data)
   val amoVal = Wire(UInt(32.W)); amoVal := Mem.getAmoVal(cur.amoFunc, data, cur.data)
 
-  val stData = Wire(UInt(32.W)); stData := cur.data << Cat(paddr(1, 0), 0.U(3.W))
+  val stData = Wire(UInt(32.W)); stData := cur.data
   val wstrb = Wire(UInt(4.W)); wstrb := Cat(Fill(2, cur.mem(1)), cur.mem(1, 0).orR, 1.U(1.W)) << paddr(1, 0)
   val wmask = Cat(Fill(8, wstrb(3)), Fill(8, wstrb(2)), Fill(8, wstrb(1)), Fill(8, wstrb(0)))
   val storeVal = Wire(UInt(32.W)); storeVal := (data & ~wmask) | (stData & wmask)

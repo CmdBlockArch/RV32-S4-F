@@ -124,6 +124,7 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   when (out.fire) { state := stIdle }
   when (flush) { state := stIdle }
   val mmioAddr = Cat(mmioPpn, cur.rdVal(11, 0))
+  val dataAligned = cur.data << Cat(cur.rdVal(1, 0), 0.U(3.W))
   memReadIO.req := state === stRead
   memReadIO.addr := mmioAddr
   memReadIO.size := cur.mem(1, 0)
@@ -135,10 +136,13 @@ class MemPre extends PiplineModule(new ExecOut, new MemPreOut) {
   memWriteIO.burst := 0.U(2.W) // fixed
   memWriteIO.len := 0.U(8.W)
   memWriteIO.dataValid := dataValid
-  memWriteIO.data := cur.data << Cat(cur.rdVal(1, 0), 0.U(3.W))
+  memWriteIO.data := dataAligned
   memWriteIO.strb := Cat(Fill(2, cur.mem(1)),
     cur.mem(1, 0).orR, 1.U(1.W)) << cur.rdVal(1, 0)
   memWriteIO.last := true.B
+
+  val outStore = out.bits.mem(3, 2) === "b01".U(2.W)
+  out.bits.data := Mux(outStore, dataAligned, cur.data)
 
   // fenceI sfenceVMA
   val io = IO(new Bundle {
